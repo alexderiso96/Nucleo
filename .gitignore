@@ -1,0 +1,31 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# env files (contengono chiavi/segreti)
+.env
+.env*.local
+
+# credenziali supabase in chiaro (password DB, service_role key)
+supabase/pwd.txt
+
+# vercel
+.vercel
+
+# claude code
+.claude
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# editor / os
+.DS_Store
+*.pem
