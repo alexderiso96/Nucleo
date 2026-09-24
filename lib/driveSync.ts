@@ -24,7 +24,7 @@ export function isSyncStale(lastSyncedAt: string | null): boolean {
  * Da chiamare lato server (es. in un Server Component o Route Handler)
  * prima di renderizzare la dashboard. Non blocca il caricamento della pagina
  * se fallisce: la sincronizzazione è "best effort", i dati già salvati restano
- * comunque visibili.
+ * comunque visibili .
  */
 export async function syncDriveIfStale(userId: string): Promise<void> {
   // TODO Fase 5:
