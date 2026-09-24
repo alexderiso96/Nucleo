@@ -1,3 +1,2 @@
 {
-  "$comment": "Nessun cron: la sincronizzazione con Google Drive viene attivata lato applicazione quando l'utente apre la dashboard (vedi lib/driveSync.ts), non da uno scheduler esterno."
 }
