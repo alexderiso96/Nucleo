@@ -14,6 +14,8 @@ create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   household_id uuid references households(id) on delete set null,
+  drive_file_url text, -- link al file Drive collegato (se autorizzato)
+  drive_last_synced_at timestamptz, -- ultima volta che abbiamo letto il file
   created_at timestamptz not null default now()
 );
 
