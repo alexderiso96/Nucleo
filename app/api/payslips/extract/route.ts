@@ -70,11 +70,10 @@ export async function POST(request: NextRequest) {
     const fullText = pageTexts.join('\n');
     const fields = parsePayslipText(fullText);
 
-    // Debug non-sensibile: niente importi nel body, solo struttura
-    const textSample = fullText
-      .substring(0, 300)
-      .replace(/[0-9]+[.,][0-9]+/g, 'N')   // sostituisce numeri con "N"
-      .replace(/\b\d+\b/g, 'N');
+    // Debug non-sensibile: numeri sostituiti con N, solo struttura testuale
+    const stripNums = (s: string) =>
+      s.replace(/[0-9]+[.,][0-9]+/g, 'N').replace(/\b\d+\b/g, 'N');
+    const textSample = stripNums(fullText); // intero testo, nessun importo
 
     return NextResponse.json({
       fields,

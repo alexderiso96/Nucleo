@@ -255,7 +255,7 @@ function ReviewStep({
               </div>
               <div>
                 <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-600 mb-1">
-                  Testo estratto (prime 300 char, numeri sostituiti con N)
+                  Testo estratto (numeri sostituiti con N)
                 </p>
                 <pre className="text-[10px] text-slate-400 whitespace-pre-wrap break-all leading-relaxed"
                   style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 6 }}>
