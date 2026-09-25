@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Check, Loader2, Trash2, X } from 'lucide-react';
-import { CATEGORIES, CATEGORY_COLORS, CATEGORY_TEXT } from '@/lib/categories';
+import { Check, Trash2, X, Loader2 } from 'lucide-react';
+import { CATEGORIES } from '@/lib/categories';
 
 interface Expense {
   id: string;
@@ -23,15 +23,58 @@ interface Props {
 const fmt = (n: number) =>
   new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
 
-function formatDate(dateStr: string) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'short' }).format(
-    new Date(y, m - 1, d),
-  );
+function categoryIcon(value: string): string {
+  return CATEGORIES.find(c => c.value === value)?.icon ?? '📦';
 }
 
 function categoryLabel(value: string): string {
   return CATEGORIES.find(c => c.value === value)?.label ?? value;
+}
+
+function categoryDarkBg(value: string): string {
+  return CATEGORIES.find(c => c.value === value)?.darkBg ?? 'rgba(100,116,139,0.14)';
+}
+
+function categoryDarkText(value: string): string {
+  return CATEGORIES.find(c => c.value === value)?.darkText ?? '#64748b';
+}
+
+interface DayGroup {
+  dateKey: string;
+  label: string;
+  dayTotal: number;
+  items: Expense[];
+}
+
+function buildGroups(expenses: Expense[]): DayGroup[] {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+  const map = new Map<string, Expense[]>();
+  for (const e of expenses) {
+    if (!map.has(e.expense_date)) map.set(e.expense_date, []);
+    map.get(e.expense_date)!.push(e);
+  }
+
+  return [...map.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([key, items]) => {
+      let label: string;
+      if (key === todayStr) label = 'Oggi';
+      else if (key === yesterdayStr) label = 'Ieri';
+      else {
+        const [y, m, d] = key.split('-').map(Number);
+        label = new Date(y, m - 1, d).toLocaleDateString('it-IT', {
+          weekday: 'short', day: 'numeric', month: 'short',
+        });
+      }
+      return {
+        dateKey: key,
+        label,
+        dayTotal: items.reduce((s, e) => s + Number(e.amount), 0),
+        items,
+      };
+    });
 }
 
 interface RowState {
@@ -97,186 +140,256 @@ export default function AnimatedExpenseList({ expenses, monthLabel }: Props) {
     } catch { /* ignore */ } finally { setDeleting(null); }
   }
 
-  const visible = expenses.filter(e => {
-    if (rows[e.id]?.deleted) return false;
-    if (categoryFilter !== 'all' && (rows[e.id]?.category ?? e.category) !== categoryFilter) return false;
-    return true;
-  });
+  const notDeleted = expenses.filter(e => !rows[e.id]?.deleted);
 
+  const visible = notDeleted.filter(e =>
+    categoryFilter === 'all' || (rows[e.id]?.category ?? e.category) === categoryFilter,
+  );
+
+  const groups = buildGroups(visible);
   const total = visible.reduce((s, e) => s + Number(e.amount), 0);
+
+  const usedCategories = CATEGORIES.filter(c =>
+    notDeleted.some(e => (rows[e.id]?.category ?? e.category) === c.value),
+  );
 
   return (
     <div className="card anim-slide-up anim-d4 overflow-hidden">
-      <div
-        className="px-5 py-3 flex items-center justify-between gap-3"
-        style={{ borderBottom: '1px solid var(--dark-600)' }}
-      >
-        <span className="text-xs font-semibold text-slate-400 shrink-0">Spese di {monthLabel}</span>
-        <div className="flex items-center gap-2 min-w-0">
-          <select
-            value={categoryFilter}
-            onChange={e => setCategoryFilter(e.target.value)}
-            className="input px-2 py-1 text-[10px]"
-            style={{ appearance: 'none', colorScheme: 'dark', minWidth: '120px' }}
-          >
-            <option value="all">Tutte le categorie</option>
-            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-          <span className="text-[10px] text-slate-600 tabular-nums shrink-0">
-            {visible.length} di {expenses.filter(e => !rows[e.id]?.deleted).length}
+
+      {/* Header + filtri */}
+      <div className="px-4 py-3 flex flex-col gap-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
+            Spese di {monthLabel}
           </span>
+          <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+            {visible.length} di {notDeleted.length}
+          </span>
+        </div>
+
+        {/* Pill filter bar */}
+        <div
+          className="flex gap-1.5 overflow-x-auto pb-0.5"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          <button
+            onClick={() => setCategoryFilter('all')}
+            className="shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold transition-all"
+            style={
+              categoryFilter === 'all'
+                ? { background: 'var(--brand)', color: '#fff' }
+                : { background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border-strong)' }
+            }
+          >
+            Tutte
+          </button>
+
+          {usedCategories.map(cat => {
+            const active = categoryFilter === cat.value;
+            return (
+              <button
+                key={cat.value}
+                onClick={() => setCategoryFilter(active ? 'all' : cat.value)}
+                className="shrink-0 flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-semibold transition-all"
+                style={
+                  active
+                    ? { background: cat.darkBg, color: cat.darkText, border: `1px solid ${cat.darkText}40` }
+                    : { background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border-strong)' }
+                }
+              >
+                <span style={{ fontSize: '0.7rem' }}>{cat.icon}</span>
+                {cat.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
+      {/* Lista */}
       {visible.length === 0 ? (
-        <div className="px-5 py-10 text-center text-xs text-slate-600">
-          {expenses.filter(e => !rows[e.id]?.deleted).length === 0
-            ? 'Nessuna spesa registrata questo mese.'
+        <div className="px-5 py-12 text-center text-sm" style={{ color: 'var(--text-3)' }}>
+          {notDeleted.length === 0
+            ? 'Nessuna spesa questo mese.'
             : 'Nessuna spesa per questa categoria.'}
         </div>
       ) : (
         <>
-          <div
-            className="grid px-5 py-2"
-            style={{ gridTemplateColumns: '72px 1fr 1fr 96px 32px', gap: '0.75rem', borderBottom: '1px solid var(--dark-700)' }}
-          >
-            {['Data', 'Categoria', 'Descrizione', 'Importo', ''].map((h, i) => (
-              <span
-                key={i}
-                className="text-[10px] font-semibold uppercase tracking-widest text-slate-600"
-                style={i === 3 ? { textAlign: 'right' } : {}}
-              >
-                {h}
-              </span>
-            ))}
-          </div>
-
-          {visible.map((expense, i) => {
-            const row = rows[expense.id] ?? {
-              category: expense.category,
-              confidence: null,
-              saved: false,
-              deleted: false,
-            };
-            const isEditing = editing === expense.id;
-            const isSaving = saving === expense.id;
-            const isDeleting = deleting === expense.id;
-            const isConfirming = confirmDelete === expense.id;
-            const isLowConf = row.confidence === 'low';
-
-            return (
+          {groups.map(group => (
+            <div key={group.dateKey}>
+              {/* Intestazione giorno */}
               <div
-                key={expense.id}
-                className={`grid px-5 py-3 items-center anim-slide-left anim-d${Math.min(i + 1, 6)}`}
-                style={{
-                  gridTemplateColumns: '72px 1fr 1fr 96px 32px',
-                  gap: '0.75rem',
-                  borderBottom: '1px solid var(--dark-700)',
-                  transition: 'background 0.18s ease',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                className="flex items-center justify-between px-4 py-2"
+                style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}
               >
-                <span className="text-xs text-slate-500 tabular-nums">
-                  {formatDate(expense.expense_date)}
+                <span
+                  className="text-[11px] font-semibold capitalize"
+                  style={{ color: 'var(--text-2)' }}
+                >
+                  {group.label}
                 </span>
-
-                <span className="relative">
-                  {isEditing ? (
-                    <select
-                      autoFocus
-                      className="input px-2 py-0.5 text-[10px] font-bold rounded-full"
-                      style={{ appearance: 'none', colorScheme: 'dark', minWidth: '120px' }}
-                      defaultValue={row.category}
-                      onChange={e => handleCategoryChange(expense, e.target.value)}
-                      onBlur={() => setEditing(null)}
-                    >
-                      {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
-                  ) : (
-                    <button
-                      title={isLowConf ? 'Categoria incerta — clicca per correggere' : 'Cambia categoria'}
-                      onClick={() => setEditing(expense.id)}
-                      className="flex items-center gap-1 cursor-pointer"
-                    >
-                      {isSaving ? (
-                        <Loader2 size={12} className="text-slate-500 animate-spin" />
-                      ) : row.saved ? (
-                        <Check size={12} className="text-emerald-400" />
-                      ) : null}
-                      <span
-                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-opacity hover:opacity-80"
-                        style={{
-                          background: CATEGORY_COLORS[row.category] ?? '#f3f4f6',
-                          color: CATEGORY_TEXT[row.category] ?? '#374151',
-                        }}
-                      >
-                        {categoryLabel(row.category)}
-                        {isLowConf && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
-                        )}
-                      </span>
-                    </button>
-                  )}
-                </span>
-
-                <span className="text-xs text-slate-400 truncate">
-                  {expense.description ?? '—'}
-                </span>
-
-                <span className="text-xs font-semibold text-slate-200 text-right tabular-nums">
-                  {fmt(Number(expense.amount))}
-                </span>
-
-                <span className="flex items-center justify-center">
-                  {isDeleting ? (
-                    <Loader2 size={13} className="text-slate-500 animate-spin" />
-                  ) : isConfirming ? (
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleDelete(expense.id)}
-                        className="w-5 h-5 flex items-center justify-center rounded text-red-400 hover:text-red-300 transition-colors"
-                        title="Conferma elimina"
-                      >
-                        <Check size={11} />
-                      </button>
-                      <button
-                        onClick={() => setConfirmDelete(null)}
-                        className="w-5 h-5 flex items-center justify-center rounded text-slate-500 hover:text-slate-300 transition-colors"
-                        title="Annulla"
-                      >
-                        <X size={11} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDelete(expense.id)}
-                      className="w-6 h-6 flex items-center justify-center rounded transition-colors hover:text-red-400"
-                      style={{ color: '#334155' }}
-                      title="Elimina spesa"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+                <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                  {fmt(group.dayTotal)}
                 </span>
               </div>
-            );
-          })}
 
+              {/* Righe */}
+              {group.items.map(expense => {
+                const row = rows[expense.id] ?? {
+                  category: expense.category,
+                  confidence: null,
+                  saved: false,
+                  deleted: false,
+                };
+                const isSaving = saving === expense.id;
+                const isDeleting = deleting === expense.id;
+                const isConfirming = confirmDelete === expense.id;
+                const isEditing = editing === expense.id;
+                const isLowConf = row.confidence === 'low';
+                const catBg = categoryDarkBg(row.category);
+                const catText = categoryDarkText(row.category);
+                const label = categoryLabel(row.category);
+                const icon = categoryIcon(row.category);
+
+                return (
+                  <div
+                    key={expense.id}
+                    className="flex items-center gap-3 px-4 py-3 group transition-colors"
+                    style={{ borderBottom: '1px solid var(--border)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    {/* Icona categoria */}
+                    <div
+                      className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0 text-base"
+                      style={{ background: catBg }}
+                    >
+                      {icon}
+                    </div>
+
+                    {/* Testo */}
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-sm truncate"
+                        style={{ color: 'var(--text-1)' }}
+                        title={expense.description ?? label}
+                      >
+                        {expense.description ?? (
+                          <span style={{ color: 'var(--text-3)' }}>{label}</span>
+                        )}
+                      </p>
+
+                      {/* Badge categoria */}
+                      {isEditing ? (
+                        <select
+                          autoFocus
+                          className="input text-[10px] px-2 py-0.5 rounded-full mt-0.5"
+                          style={{ appearance: 'none', colorScheme: 'dark', minWidth: 120 }}
+                          defaultValue={row.category}
+                          onChange={e => handleCategoryChange(expense, e.target.value)}
+                          onBlur={() => setEditing(null)}
+                        >
+                          {CATEGORIES.map(c => (
+                            <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <button
+                          onClick={() => setEditing(expense.id)}
+                          title={isLowConf ? 'Categoria incerta — clicca per correggere' : 'Cambia categoria'}
+                          className="flex items-center gap-1 mt-0.5"
+                        >
+                          {isSaving ? (
+                            <Loader2 size={10} className="animate-spin" style={{ color: 'var(--text-3)' }} />
+                          ) : row.saved ? (
+                            <Check size={10} style={{ color: 'var(--income)' }} />
+                          ) : null}
+
+                          <span
+                            className="badge text-[10px]"
+                            style={
+                              isLowConf
+                                ? {
+                                    background: 'rgba(251,191,36,0.12)',
+                                    color: 'var(--warning)',
+                                    border: '1px solid rgba(251,191,36,0.25)',
+                                  }
+                                : { background: catBg, color: catText }
+                            }
+                          >
+                            {isLowConf && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full inline-block"
+                                style={{ background: 'var(--warning)' }}
+                              />
+                            )}
+                            {label}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Importo */}
+                    <span
+                      className="text-sm font-semibold tabular-nums shrink-0"
+                      style={{ color: 'var(--expense)' }}
+                    >
+                      {fmt(Number(expense.amount))}
+                    </span>
+
+                    {/* Delete */}
+                    <div className="w-7 flex items-center justify-center shrink-0">
+                      {isDeleting ? (
+                        <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-3)' }} />
+                      ) : isConfirming ? (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleDelete(expense.id)}
+                            className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+                            style={{ color: 'var(--expense)' }}
+                            title="Conferma"
+                          >
+                            <Check size={11} />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+                            style={{ color: 'var(--text-3)' }}
+                            title="Annulla"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(expense.id)}
+                          className="w-6 h-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ color: 'var(--text-3)' }}
+                          title="Elimina spesa"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
+          {/* Totale */}
           <div
-            className="grid px-5 py-3.5"
-            style={{ gridTemplateColumns: '72px 1fr 1fr 96px 32px', gap: '0.75rem', borderTop: '1px solid var(--dark-600)' }}
+            className="flex items-center justify-between px-4 py-3"
+            style={{ borderTop: '1px solid var(--border-strong)', background: 'var(--surface-2)' }}
           >
             <span
-              className="col-span-3 text-[10px] font-semibold uppercase tracking-widest"
-              style={{ color: 'var(--brand-400)' }}
+              className="text-[11px] font-semibold uppercase tracking-widest"
+              style={{ color: 'var(--text-3)' }}
             >
-              Totale
+              Totale {monthLabel}
             </span>
-            <span className="text-sm font-bold text-slate-100 text-right tabular-nums">
+            <span className="text-base font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
               {fmt(total)}
             </span>
-            <span />
           </div>
         </>
       )}
