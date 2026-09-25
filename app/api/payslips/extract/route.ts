@@ -168,7 +168,14 @@ export async function POST(request: NextRequest) {
   for (const { name, fn } of providers) {
     try {
       const extracted = await fn();
-      return NextResponse.json({ fields: buildFields(extracted) });
+
+      // Log struttura (mai valori finanziari)
+      const foundKeys = Object.entries(extracted)
+        .filter(([, v]) => v !== null && v !== undefined)
+        .map(([k]) => k);
+      console.log(`[payslips/extract] ${name} found keys:`, foundKeys);
+
+      return NextResponse.json({ fields: buildFields(extracted), _provider: name });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown';
       console.error(`[payslips/extract] ${name} failed:`, msg);
