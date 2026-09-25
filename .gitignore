@@ -14,7 +14,7 @@
 
 # credenziali supabase in chiaro (password DB, service_role key)
 supabase/pwd.txt
-
+supabase/
 # vercel
 .vercel
 

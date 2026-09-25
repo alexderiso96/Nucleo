@@ -21,7 +21,7 @@ export default async function DashboardPage() {
 
   const { data: expenses } = await supabase
     .from('expenses')
-    .select('id, amount, currency, category, description, expense_date')
+    .select('id, amount, currency, category, category_confidence, description, expense_date')
     .gte('expense_date', firstDay)
     .lte('expense_date', lastDay)
     .order('expense_date', { ascending: false })
