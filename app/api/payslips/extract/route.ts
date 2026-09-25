@@ -1,6 +1,8 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+import path from 'path';
+import { pathToFileURL } from 'url';
 import { createClient } from '@/lib/supabaseServer';
 import { parsePayslipText } from '@/lib/payslip-parser';
 
@@ -22,11 +24,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Dynamic import — pdfjs-dist is listed in serverExternalPackages
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    pdfjs.GlobalWorkerOptions.workerSrc = '';
 
-    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false });
+    // pdfjs-dist v6 richiede un workerSrc esplicito anche in Node.js.
+    // Puntiamo al file worker locale; Node.js lo carica come Worker Thread.
+    const workerPath = path.resolve(
+      process.cwd(),
+      'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+    );
+    pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
+
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      useWorkerFetch: false,
+    });
     const pdf = await loadingTask.promise;
 
     const pageTexts: string[] = [];
@@ -42,7 +53,10 @@ export async function POST(request: NextRequest) {
     const fullText = pageTexts.join('\n');
     const fields = parsePayslipText(fullText);
     return NextResponse.json({ fields });
-  } catch {
+  } catch (err) {
+    // Log solo il tipo di errore, mai il contenuto del PDF (dati finanziari)
+    const message = err instanceof Error ? err.message : 'unknown';
+    console.error('[payslips/extract] PDF parse failed:', message);
     return NextResponse.json({
       fields: { confidence: 'low' as const },
     });

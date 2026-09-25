@@ -14,7 +14,7 @@ const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/import',    icon: Upload,           label: 'Importa' },
   { href: '/payslips',  icon: FileText,          label: 'Buste paga' },
-  { href: '/family',    icon: Users,             label: 'Nucleo',    soon: true },
+  { href: '/family',    icon: Users,             label: 'Nucleo' },
 ];
 
 export default function Sidebar() {
@@ -52,12 +52,12 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex flex-col gap-0.5 w-full px-2 flex-1">
-        {navItems.map(({ href, icon: Icon, label, soon }) => {
+        {navItems.map(({ href, icon: Icon, label }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
           return (
             <Link
               key={href}
-              href={soon ? '#' : href}
+              href={href}
               className="relative flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"
               style={
                 active
@@ -96,18 +96,6 @@ export default function Sidebar() {
                 {label}
               </span>
 
-              {soon && (
-                <span
-                  className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-                  style={{
-                    background: 'rgba(251,191,36,0.12)',
-                    color: '#fbbf24',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  PRESTO
-                </span>
-              )}
             </Link>
           );
         })}

@@ -13,11 +13,14 @@ interface Expense {
   description: string | null;
   expense_date: string;
   source?: string | null;
+  is_shared?: boolean;
 }
 
 interface Props {
   expenses: Expense[];
   monthLabel: string;
+  /** Se true mostra il toggle condivisione per ogni spesa */
+  hasHousehold?: boolean;
 }
 
 const fmt = (n: number) =>
@@ -82,9 +85,11 @@ interface RowState {
   confidence: string | null;
   saved: boolean;
   deleted: boolean;
+  shared: boolean;
+  sharingLoading: boolean;
 }
 
-export default function AnimatedExpenseList({ expenses, monthLabel }: Props) {
+export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold = false }: Props) {
   const [rows, setRows] = useState<Record<string, RowState>>(() => {
     const init: Record<string, RowState> = {};
     for (const e of expenses) {
@@ -93,6 +98,8 @@ export default function AnimatedExpenseList({ expenses, monthLabel }: Props) {
         confidence: e.category_confidence ?? null,
         saved: false,
         deleted: false,
+        shared: e.is_shared ?? false,
+        sharingLoading: false,
       };
     }
     return init;
@@ -138,6 +145,28 @@ export default function AnimatedExpenseList({ expenses, monthLabel }: Props) {
       await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
       setRows(prev => ({ ...prev, [id]: { ...prev[id], deleted: true } }));
     } catch { /* ignore */ } finally { setDeleting(null); }
+  }
+
+  async function handleToggleShare(expense: Expense) {
+    const current = rows[expense.id]?.shared ?? false;
+    setRows(prev => ({ ...prev, [expense.id]: { ...prev[expense.id], sharingLoading: true } }));
+    try {
+      const res = await fetch(`/api/expenses/${expense.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_shared: !current }),
+      });
+      if (res.ok) {
+        setRows(prev => ({
+          ...prev,
+          [expense.id]: { ...prev[expense.id], shared: !current, sharingLoading: false },
+        }));
+      } else {
+        setRows(prev => ({ ...prev, [expense.id]: { ...prev[expense.id], sharingLoading: false } }));
+      }
+    } catch {
+      setRows(prev => ({ ...prev, [expense.id]: { ...prev[expense.id], sharingLoading: false } }));
+    }
   }
 
   const notDeleted = expenses.filter(e => !rows[e.id]?.deleted);
@@ -239,6 +268,8 @@ export default function AnimatedExpenseList({ expenses, monthLabel }: Props) {
                   confidence: null,
                   saved: false,
                   deleted: false,
+                  shared: expense.is_shared ?? false,
+                  sharingLoading: false,
                 };
                 const isSaving = saving === expense.id;
                 const isDeleting = deleting === expense.id;
@@ -335,6 +366,27 @@ export default function AnimatedExpenseList({ expenses, monthLabel }: Props) {
                     >
                       {fmt(Number(expense.amount))}
                     </span>
+
+                    {/* Condividi (solo se nel nucleo) */}
+                    {hasHousehold && (
+                      <button
+                        onClick={() => handleToggleShare(expense)}
+                        disabled={row.sharingLoading}
+                        title={row.shared ? 'Condivisa col partner — clicca per rendere privata' : 'Condividi col partner'}
+                        className="w-6 h-6 flex items-center justify-center rounded-md transition-all shrink-0"
+                        style={{
+                          fontSize: '0.7rem',
+                          opacity: row.sharingLoading ? 0.5 : 1,
+                          background: row.shared ? 'rgba(16,185,129,0.12)' : 'transparent',
+                          border: row.shared ? '1px solid rgba(16,185,129,0.3)' : '1px solid transparent',
+                          color: row.shared ? 'var(--income)' : 'var(--text-3)',
+                        }}
+                      >
+                        {row.sharingLoading
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : row.shared ? '⇌' : '⇌'}
+                      </button>
+                    )}
 
                     {/* Delete */}
                     <div className="w-7 flex items-center justify-center shrink-0">

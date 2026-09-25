@@ -2,12 +2,25 @@ export interface Profile {
   id: string;
   full_name: string | null;
   household_id: string | null;
+  drive_file_url: string | null;
+  drive_last_synced_at: string | null;
   created_at: string;
 }
 
 export interface Household {
   id: string;
   name: string;
+  created_at: string;
+}
+
+export interface HouseholdInvite {
+  id: string;
+  household_id: string;
+  code: string;
+  created_by: string;
+  expires_at: string;
+  used_at: string | null;
+  used_by: string | null;
   created_at: string;
 }
 
@@ -18,6 +31,7 @@ export interface Expense {
   amount: number;
   currency: string;
   category: string;
+  category_confidence?: string | null;
   description: string | null;
   expense_date: string;
   source: 'manual' | 'csv' | 'drive' | 'email';

@@ -45,16 +45,16 @@ export async function POST(request: NextRequest) {
   const record = {
     user_id: user.id,
     period_month: body.period_month,
-    gross_amount: body.gross_amount ?? null,
-    net_amount: body.net_amount ?? null,
-    irpef: body.irpef ?? null,
-    inps_contributions: body.inps_contributions ?? null,
-    regional_municipal_tax: body.regional_municipal_tax ?? null,
-    overtime_hours: body.overtime_hours ?? null,
-    overtime_amount: body.overtime_amount ?? null,
-    meal_vouchers: body.meal_vouchers ?? null,
-    tfr_accrued_period: body.tfr_accrued_period ?? null,
-    tfr_total: body.tfr_total ?? null,
+    gross_amount: body.gross_amount ?? 0,
+    net_amount: body.net_amount ?? 0,
+    irpef: body.irpef ?? 0,
+    inps_contributions: body.inps_contributions ?? 0,
+    regional_municipal_tax: body.regional_municipal_tax ?? 0,
+    overtime_hours: body.overtime_hours ?? 0,
+    overtime_amount: body.overtime_amount ?? 0,
+    meal_vouchers: body.meal_vouchers ?? 0,
+    tfr_accrued_this_period: body.tfr_accrued_period ?? 0,
+    tfr_total_accrued: body.tfr_total ?? 0,
     employer_name: body.employer_name ?? null,
     extraction_confidence: body.extraction_confidence ?? 'low',
     storage_path: body.storage_path ?? null,
@@ -64,6 +64,9 @@ export async function POST(request: NextRequest) {
     .from('payslips')
     .upsert(record, { onConflict: 'user_id,period_month' });
 
-  if (error) return NextResponse.json({ error: 'DB error' }, { status: 500 });
+  if (error) {
+    console.error('[payslips POST] DB error code:', error.code, error.hint);
+    return NextResponse.json({ error: 'DB error' }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

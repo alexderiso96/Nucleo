@@ -51,6 +51,14 @@ export default async function DashboardPage({
   const list = expenses ?? [];
   const totalMonth = list.reduce((sum, e) => sum + Number(e.amount), 0);
 
+  // Nucleo familiare — per abilitare il toggle di condivisione spese
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('household_id')
+    .eq('id', user.id)
+    .single();
+  const hasHousehold = Boolean(profile?.household_id);
+
   // Netto del mese corrente da buste paga (per "Entrate")
   const { data: payslipThisMonth } = await supabase
     .from('payslips')
@@ -152,7 +160,7 @@ export default async function DashboardPage({
               style={{ color: 'var(--text-3)' }}>Aggiungi spesa</p>
             <ExpenseForm />
           </div>
-          <AnimatedExpenseList expenses={list} monthLabel={monthLabel} />
+          <AnimatedExpenseList expenses={list} monthLabel={monthLabel} hasHousehold={hasHousehold} />
         </main>
       </div>
     </div>
