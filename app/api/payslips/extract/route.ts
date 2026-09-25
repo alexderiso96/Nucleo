@@ -71,12 +71,9 @@ async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
   );
   pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
 
-  // standardFontDataUrl necessario su Vercel serverless (non trova i font localmente)
-  const PDFJS_CDN = 'https://unpkg.com/pdfjs-dist@6.3.289/standard_fonts/';
   const pdf = await pdfjs.getDocument({
     data: new Uint8Array(buffer),
     useWorkerFetch: false,
-    standardFontDataUrl: PDFJS_CDN,
   }).promise;
   let fullText = '';
 
@@ -109,7 +106,7 @@ async function extractWithGemini(buffer: ArrayBuffer): Promise<Record<string, un
   console.log('[gemini] init SDK');
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash-lite',
+    model: 'gemini-3.5-flash-lite',
     systemInstruction: SYSTEM_INSTRUCTION,
   });
   console.log('[gemini] calling generateContent, pdf bytes:', buffer.byteLength);
@@ -138,7 +135,7 @@ async function extractWithGroq(buffer: ArrayBuffer): Promise<Record<string, unkn
   console.log('[groq] calling LLM...');
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const chat = await groq.chat.completions.create({
-    model: 'llama-3.1-8b-instant',
+    model: 'llama-3.3-70b-versatile',
     messages: [
       { role: 'system', content: SYSTEM_INSTRUCTION },
       { role: 'user',   content: `Testo busta paga:\n\n${text.slice(0, 6000)}` },
