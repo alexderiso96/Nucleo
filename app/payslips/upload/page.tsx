@@ -254,11 +254,22 @@ function ReviewStep({
                 ))}
               </div>
               <div>
-                <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-600 mb-1">
-                  Testo estratto (numeri sostituiti con N)
-                </p>
-                <pre className="text-[10px] text-slate-400 whitespace-pre-wrap break-all leading-relaxed"
-                  style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 6 }}>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-600">
+                    Testo estratto (numeri → N)
+                  </p>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(debug.textSample)}
+                    className="text-[9px] text-slate-500 hover:text-slate-300 transition-colors px-2 py-0.5 rounded"
+                    style={{ border: '1px solid rgba(100,116,139,0.3)' }}
+                  >
+                    Copia tutto
+                  </button>
+                </div>
+                <pre
+                  className="text-[10px] text-slate-400 whitespace-pre-wrap break-all leading-relaxed overflow-y-auto"
+                  style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 6, maxHeight: 300 }}
+                >
                   {debug.textSample}
                 </pre>
               </div>
