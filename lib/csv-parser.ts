@@ -6,6 +6,8 @@ export interface ColumnMap {
   credit?: string;
   description?: string;
   sourceName: string;
+  typeColumn?: string;
+  typeFilter?: 'debit' | 'credit' | 'all';
 }
 
 export type ParsedRow =
@@ -50,10 +52,14 @@ const DESC_PATTERNS = [
   'dettagli', 'nota', 'memo',
 ];
 
+const TYPE_PATTERNS = ['tipo operazione', 'tipo movimento', 'tipo transazione', 'tipo'];
+const DEBIT_TYPE_KEYWORDS = ['addebito', 'pagamento', 'uscita', 'dare', 'debit'];
+const CREDIT_TYPE_KEYWORDS = ['accredito', 'entrata', 'avere', 'credit', 'stipendio'];
+
 function matchHeader(headers: string[], patterns: string[]): string | undefined {
   const lower = headers.map(h => h.trim().toLowerCase());
   for (const pattern of patterns) {
-    const idx = lower.indexOf(pattern);
+    const idx = lower.findIndex(h => h === pattern || h.includes(pattern));
     if (idx !== -1) return headers[idx];
   }
   return undefined;
@@ -82,6 +88,12 @@ export function autoDetectMapping(headers: string[]): Partial<ColumnMap> {
 
   const descCol = matchHeader(headers, DESC_PATTERNS);
   if (descCol) result.description = descCol;
+
+  const typeCol = matchHeader(headers, TYPE_PATTERNS);
+  if (typeCol) {
+    result.typeColumn = typeCol;
+    result.typeFilter = 'debit'; // default: importa solo addebiti
+  }
 
   return result;
 }
@@ -133,7 +145,10 @@ export function parseDate(s: string): Date | null {
 export function parseAmount(s: string): number | null {
   if (!s || !s.trim()) return null;
 
-  let cleaned = s.trim().replace(/€/g, '').replace(/\s/g, '');
+  let cleaned = s.trim()
+    .replace(/−/g, '-') // segno meno Unicode (Excel)
+    .replace(/€/g, '')
+    .replace(/\s/g, '');
   if (cleaned === '' || cleaned === '-' || cleaned === '+') return null;
 
   const negative = cleaned.startsWith('-');
@@ -214,6 +229,19 @@ export function parseRows(
     const parsedAmount = parseAmount(rawAmount);
     if (parsedAmount === null) {
       return { ok: false, reason: `Importo non valido: "${rawAmount}"`, rawIndex };
+    }
+
+    // Filtro tipo (Addebito/Accredito)
+    if (map.typeColumn && map.typeFilter && map.typeFilter !== 'all') {
+      const rawType = (row[map.typeColumn] ?? '').trim().toLowerCase();
+      const isCredit = CREDIT_TYPE_KEYWORDS.some(k => rawType.includes(k));
+      const isDebit = DEBIT_TYPE_KEYWORDS.some(k => rawType.includes(k));
+      if (map.typeFilter === 'debit' && isCredit && !isDebit) {
+        return { ok: false, reason: `Accredito ignorato: "${row[map.typeColumn]}"`, rawIndex };
+      }
+      if (map.typeFilter === 'credit' && isDebit && !isCredit) {
+        return { ok: false, reason: `Addebito ignorato: "${row[map.typeColumn]}"`, rawIndex };
+      }
     }
 
     const description = map.description

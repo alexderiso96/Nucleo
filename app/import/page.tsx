@@ -12,6 +12,7 @@ import {
   type ColumnMap,
   type ParsedRow,
 } from '@/lib/csv-parser';
+import { parseXlsxBuffer } from '@/lib/xlsx-parser';
 
 type Step = 'upload' | 'mapping' | 'preview' | 'importing' | 'done';
 
@@ -50,39 +51,48 @@ export default function ImportPage() {
 
   const processFile = useCallback(async (file: File) => {
     setError(null);
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setError('Il file deve essere un CSV.');
+    const name = file.name.toLowerCase();
+    const isXlsx = name.endsWith('.xlsx') || name.endsWith('.xls');
+    if (!isXlsx && !name.endsWith('.csv')) {
+      setError('Il file deve essere un CSV o un file Excel (.xlsx).');
       return;
     }
 
-    let text: string;
+    let headers: string[];
+    let records: Record<string, string>[];
     let encoding: string;
+
     try {
       const buffer = await file.arrayBuffer();
-      ({ text, encoding } = decodeBuffer(buffer));
+
+      if (isXlsx) {
+        ({ headers, records } = await parseXlsxBuffer(buffer));
+        encoding = 'Excel';
+      } else {
+        const decoded = decodeBuffer(buffer);
+        encoding = decoded.encoding;
+        const parsed = Papa.parse<Record<string, string>>(decoded.text, {
+          header: true,
+          skipEmptyLines: 'greedy',
+        });
+        if ((parsed.errors.length > 0 && parsed.data.length === 0) || parsed.data.length === 0) {
+          setError('Il file non è un CSV valido o è vuoto.');
+          return;
+        }
+        headers = parsed.meta.fields ?? [];
+        records = parsed.data;
+      }
     } catch {
       setError('Impossibile leggere il file.');
       return;
     }
 
-    const parsed = Papa.parse<Record<string, string>>(text, {
-      header: true,
-      skipEmptyLines: 'greedy',
-    });
-
-    if (parsed.errors.length > 0 && parsed.data.length === 0) {
-      setError('Il file non è un CSV valido o è vuoto.');
+    if (records.length === 0) {
+      setError('Il file non contiene righe di dati.');
       return;
     }
-
-    if (parsed.data.length === 0) {
-      setError('Il CSV non contiene righe di dati.');
-      return;
-    }
-
-    const headers = parsed.meta.fields ?? [];
     if (headers.length === 0) {
-      setError('Impossibile rilevare le intestazioni del CSV.');
+      setError('Impossibile rilevare le intestazioni del file.');
       return;
     }
 
@@ -91,7 +101,7 @@ export default function ImportPage() {
 
     const pf: ParsedFile = {
       headers,
-      records: parsed.data,
+      records,
       fingerprint: fp,
       encoding,
       fileName: file.name,
@@ -267,15 +277,15 @@ export default function ImportPage() {
             >
               <Upload size={24} className="text-slate-600" />
               <div className="text-center">
-                <p className="text-sm text-slate-400">Trascina un file CSV qui</p>
-                <p className="text-xs text-slate-600 mt-1">oppure clicca per selezionare</p>
+                <p className="text-sm text-slate-400">Trascina un file CSV o Excel qui</p>
+                <p className="text-xs text-slate-600 mt-1">oppure clicca per selezionare · .csv, .xlsx</p>
               </div>
             </div>
 
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               className="hidden"
               onChange={handleFileChange}
             />
@@ -290,7 +300,10 @@ export default function ImportPage() {
             </h1>
             <p className="text-xs text-slate-500 mb-6">
               File: <span className="text-slate-400">{parsedFile.fileName}</span>
-              {parsedFile.encoding !== 'UTF-8' && (
+              {parsedFile.encoding === 'Excel' && (
+                <span className="ml-2 text-sky-400">· Excel</span>
+              )}
+              {parsedFile.encoding !== 'UTF-8' && parsedFile.encoding !== 'Excel' && (
                 <span className="ml-2 text-amber-400">· {parsedFile.encoding} rilevato</span>
               )}
             </p>
@@ -389,6 +402,35 @@ export default function ImportPage() {
                   {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </div>
+
+              <div>
+                <label className={labelClass}>Colonna Tipo (opzionale)</label>
+                <select
+                  value={columnMap.typeColumn ?? ''}
+                  onChange={e => setColumnMap(m => ({ ...m, typeColumn: e.target.value || undefined }))}
+                  className={selectClass}
+                  style={{ appearance: 'none', colorScheme: 'dark' }}
+                >
+                  <option value="">— nessuna —</option>
+                  {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </div>
+
+              {columnMap.typeColumn && (
+                <div>
+                  <label className={labelClass}>Filtra per tipo</label>
+                  <select
+                    value={columnMap.typeFilter ?? 'debit'}
+                    onChange={e => setColumnMap(m => ({ ...m, typeFilter: e.target.value as 'debit' | 'credit' | 'all' }))}
+                    className={selectClass}
+                    style={{ appearance: 'none', colorScheme: 'dark' }}
+                  >
+                    <option value="debit">Solo addebiti (uscite)</option>
+                    <option value="credit">Solo accrediti (entrate)</option>
+                    <option value="all">Tutti</option>
+                  </select>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setStep('upload')} className="px-4 py-2.5 text-sm text-slate-400 rounded-lg transition-colors hover:text-slate-200" style={{ border: '1px solid var(--dark-600)' }}>

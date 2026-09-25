@@ -13,7 +13,7 @@ import {
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/import',    icon: Upload,           label: 'Importa' },
-  { href: '/payslips',  icon: FileText,          label: 'Buste paga', soon: true },
+  { href: '/payslips',  icon: FileText,          label: 'Buste paga' },
   { href: '/family',    icon: Users,             label: 'Nucleo',    soon: true },
 ];
 
