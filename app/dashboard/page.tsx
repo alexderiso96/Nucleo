@@ -148,7 +148,8 @@ export default async function DashboardPage({
             dailyExpenses={dailyExpenses}
           />
           <div className="card p-5 anim-slide-up anim-d3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">Nuova spesa</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-4"
+              style={{ color: 'var(--text-3)' }}>Aggiungi spesa</p>
             <ExpenseForm />
           </div>
           <AnimatedExpenseList expenses={list} monthLabel={monthLabel} />
