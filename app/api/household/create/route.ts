@@ -28,8 +28,10 @@ export async function POST() {
     .single();
 
   if (householdErr || !household) {
+    console.error('[household/create] households insert error:', householdErr?.code, householdErr?.message);
     return NextResponse.json({ error: 'Errore nella creazione del nucleo' }, { status: 500 });
   }
+  console.log('[household/create] household created:', household.id);
 
   const { error: profileErr } = await supabase
     .from('profiles')
@@ -37,8 +39,10 @@ export async function POST() {
     .eq('id', user.id);
 
   if (profileErr) {
+    console.error('[household/create] profiles update error:', profileErr?.code, profileErr?.message);
     return NextResponse.json({ error: 'Errore aggiornamento profilo' }, { status: 500 });
   }
+  console.log('[household/create] profile updated');
 
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const code = generateCode();
@@ -48,6 +52,7 @@ export async function POST() {
     .insert({ household_id: household.id, code, created_by: user.id, expires_at: expiresAt });
 
   if (inviteErr) {
+    console.error('[household/create] invites insert error:', inviteErr?.code, inviteErr?.message);
     return NextResponse.json({ error: 'Errore generazione codice invito' }, { status: 500 });
   }
 
