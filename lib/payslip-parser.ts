@@ -42,116 +42,173 @@ function parseItMonth(s: string): string | null {
 
 function parseItNumber(s: string): number | null {
   if (!s) return null;
-  const cleaned = s.replace(/\./g, '').replace(',', '.').replace(/[€\s]/g, '').replace(/−/g, '-');
+  const cleaned = s
+    .replace(/\./g, '')
+    .replace(',', '.')
+    .replace(/[€\s]/g, '')
+    .replace(/−/g, '-');
   const n = parseFloat(cleaned);
   return isNaN(n) ? null : Math.abs(n);
 }
 
-// ── Cerca valore dopo etichetta ───────────────────────────────────────────────
+// ── Separatore flessibile ─────────────────────────────────────────────────────
+// Permette: spazi, newline, due punti, euro, pipe, trattini, asterischi, slash
+const SEP = '[\\s:€|\\-–—./,;*]{0,40}';
 
-function findAfterLabel(text: string, patterns: RegExp[]): number | null {
-  for (const re of patterns) {
+function findAfterLabel(text: string, labels: RegExp[]): number | null {
+  for (const re of labels) {
     const m = re.exec(text);
     if (m?.[1]) {
       const n = parseItNumber(m[1]);
-      if (n !== null) return n;
+      if (n !== null && n > 0) return n;
     }
   }
   return null;
 }
 
-function findStringAfterLabel(text: string, patterns: RegExp[]): string | null {
-  for (const re of patterns) {
+function findStringAfterLabel(text: string, labels: RegExp[]): string | null {
+  for (const re of labels) {
     const m = re.exec(text);
     if (m?.[1]) return m[1].trim();
   }
   return null;
 }
 
+// Crea regex con separatore flessibile
+function rx(label: string): RegExp {
+  return new RegExp(`${label}${SEP}([0-9][0-9.,]*)`, 'i');
+}
+
 // ── Parser principale ─────────────────────────────────────────────────────────
 
 export function parsePayslipText(text: string): PayslipFields {
-  const t = text.replace(/\r\n/g, '\n');
+  const t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   const grossAmount = findAfterLabel(t, [
-    /retribuzione\s+lorda[:\s]+([0-9.,]+)/i,
-    /totale\s+competenze[:\s]+([0-9.,]+)/i,
-    /imponibile\s+previdenziale[:\s]+([0-9.,]+)/i,
-    /lordo\s+mensile[:\s]+([0-9.,]+)/i,
-    /stipendio\s+lordo[:\s]+([0-9.,]+)/i,
+    rx('retribuzione\\s+lorda'),
+    rx('totale\\s+competenze'),
+    rx('totale\\s+voci\\s+retributive'),
+    rx('totale\\s+voci\\s+stipendio'),
+    rx('imponibile\\s+previdenziale'),
+    rx('lordo\\s+mensile'),
+    rx('stipendio\\s+lordo'),
+    rx('paga\\s+base\\s+lorda'),
+    rx('retribuzione\\s+mensile\\s+lorda'),
+    rx('retribuzione\\s+globale\\s+di\\s+fatto'),
+    rx('totale\\s+emolumenti'),
+    rx('totale\\s+a\\s+credito'),
   ]);
 
   const netAmount = findAfterLabel(t, [
-    /netto\s+in\s+pagamento[:\s]+([0-9.,]+)/i,
-    /totale\s+netto[:\s]+([0-9.,]+)/i,
-    /netto\s+erogato[:\s]+([0-9.,]+)/i,
-    /da\s+pagare[:\s]+([0-9.,]+)/i,
-    /stipendio\s+netto[:\s]+([0-9.,]+)/i,
+    rx('netto\\s+in\\s+pagamento'),
+    rx('totale\\s+netto\\s+in\\s+pagamento'),
+    rx('netto\\s+a\\s+pagare'),
+    rx('totale\\s+netto\\s+a\\s+pagare'),
+    rx('netto\\s+erogato'),
+    rx('totale\\s+netto'),
+    rx('da\\s+pagare'),
+    rx('stipendio\\s+netto'),
+    rx('netto\\s+mensile'),
+    rx('importo\\s+netto'),
+    rx('accredito\\s+in\\s+banca'),
+    rx('totale\\s+a\\s+vostro\\s+credito'),
+    rx('netto\\s+percepito'),
+    rx('importo\\s+accreditato'),
   ]);
 
   const irpef = findAfterLabel(t, [
-    /irpef[:\s]+([0-9.,]+)/i,
-    /ritenuta\s+irpef[:\s]+([0-9.,]+)/i,
-    /imposta\s+irpef[:\s]+([0-9.,]+)/i,
+    rx('ritenuta\\s+irpef'),
+    rx('imposta\\s+irpef'),
+    rx('totale\\s+irpef'),
+    rx('totale\\s+ritenute\\s+irpef'),
+    rx('irpef\\s+a\\s+credito'),
+    rx('irpef\\s+a\\s+debito'),
+    rx('irpef'),
   ]);
 
   const inpsContributions = findAfterLabel(t, [
-    /contributi?\s+inps[:\s]+([0-9.,]+)/i,
-    /contributi?\s+previdenziali[:\s]+([0-9.,]+)/i,
-    /inps[:\s]+([0-9.,]+)/i,
+    rx('contributi?\\s+inps\\s+a\\s+carico\\s+dipendente'),
+    rx('contributi?\\s+a\\s+carico\\s+dipendente'),
+    rx('contributi?\\s+previdenziali\\s+dipendente'),
+    rx('contributi?\\s+inps'),
+    rx('contributi?\\s+previdenziali'),
+    rx('totale\\s+contributi?'),
+    rx('inps\\s+dipendente'),
+    rx('inps'),
   ]);
 
   const regionalMunicipalTax = findAfterLabel(t, [
-    /addizionale\s+regionale[:\s]+([0-9.,]+)/i,
-    /addizionale\s+comunale[:\s]+([0-9.,]+)/i,
-    /add\.\s*reg[:\s]+([0-9.,]+)/i,
-    /add\.\s*com[:\s]+([0-9.,]+)/i,
+    rx('addizionale\\s+regionale\\s+irpef'),
+    rx('addizionale\\s+comunale\\s+irpef'),
+    rx('addizionale\\s+regionale'),
+    rx('addizionale\\s+comunale'),
+    rx('add\\.\\s*reg'),
+    rx('add\\.\\s*com'),
+    rx('add\\.\\s+regionale'),
+    rx('add\\.\\s+comunale'),
   ]);
 
   const overtimeHours = findAfterLabel(t, [
-    /ore\s+straordinar[ie]+[:\s]+([0-9.,]+)/i,
-    /straordinari\s+ore[:\s]+([0-9.,]+)/i,
+    rx('ore\\s+straordinar[ie]+'),
+    rx('straordinari\\s+ore'),
+    rx('h\\.\\s*straord'),
   ]);
 
   const overtimeAmount = findAfterLabel(t, [
-    /straordinari[:\s]+([0-9.,]+)/i,
-    /compenso\s+straordinari[:\s]+([0-9.,]+)/i,
+    rx('compenso\\s+straordinari'),
+    rx('straordinari'),
+    rx('lavoro\\s+straordinario'),
   ]);
 
   const mealVouchers = findAfterLabel(t, [
-    /buoni?\s+pasto[:\s]+([0-9.,]+)/i,
-    /ticket\s+restaurant[:\s]+([0-9.,]+)/i,
-    /buoni?\s+mensa[:\s]+([0-9.,]+)/i,
-    /welfare\s+buoni?\s+pasto[:\s]+([0-9.,]+)/i,
+    rx('welfare\\s+buoni?\\s+pasto'),
+    rx('buoni?\\s+pasto'),
+    rx('ticket\\s+restaurant'),
+    rx('buoni?\\s+mensa'),
+    rx('meal\\s+voucher'),
   ]);
 
   const tfrAccruedPeriod = findAfterLabel(t, [
-    /tfr\s+maturato\s+nel\s+periodo[:\s]+([0-9.,]+)/i,
-    /quota\s+tfr[:\s]+([0-9.,]+)/i,
+    rx('tfr\\s+maturato\\s+nel\\s+periodo'),
+    rx('tfr\\s+del\\s+periodo'),
+    rx('quota\\s+tfr\\s+periodo'),
+    rx('quota\\s+tfr'),
+    rx('accantonamento\\s+tfr\\s+periodo'),
   ]);
 
   const tfrTotal = findAfterLabel(t, [
-    /tfr\s+accantonato[:\s]+([0-9.,]+)/i,
-    /totale\s+tfr[:\s]+([0-9.,]+)/i,
-    /trattamento\s+fine\s+rapporto[:\s]+([0-9.,]+)/i,
+    rx('tfr\\s+totale\\s+accantonato'),
+    rx('tfr\\s+accantonato'),
+    rx('totale\\s+tfr'),
+    rx('trattamento\\s+fine\\s+rapporto'),
+    rx('tfr\\s+in\\s+azienda'),
   ]);
 
   const employerName = findStringAfterLabel(t, [
-    /datore\s+di\s+lavoro[:\s]+([^\n]+)/i,
-    /azienda[:\s]+([^\n]+)/i,
-    /societ[àa][:\s]+([^\n]+)/i,
+    /datore\s+di\s+lavoro[:\s]+([^\n]{2,60})/i,
+    /azienda[:\s]+([^\n]{2,60})/i,
+    /societ[àa][:\s]+([^\n]{2,60})/i,
+    /societ[àa]?\s+([A-Z][^\n]{2,50}(?:S\.p\.A\.|S\.r\.l\.|S\.a\.s\.|SpA|Srl))/i,
   ]);
 
-  // Periodo: cerca "Competenza MESE ANNO" o "Mese MESE ANNO"
+  // Periodo: cerca pattern comuni nelle buste paga italiane
   let periodMonth: string | undefined;
-  const periodMatch = t.match(/competenza\s+([a-zà-ú]+\s+\d{4})/i)
-    ?? t.match(/periodo\s*[:\-]?\s*([a-zà-ú]+\s+\d{4})/i)
-    ?? t.match(/mese\s*[:\-]?\s*([a-zà-ú]+\s+\d{4})/i);
-  if (periodMatch?.[1]) {
-    periodMonth = parseItMonth(periodMatch[1]) ?? undefined;
+  const periodPatterns = [
+    /competenza[:\s]+([a-zà-ú]+\s+\d{4})/i,
+    /periodo[:\s\-]+([a-zà-ú]+\s+\d{4})/i,
+    /mese[:\s\-]+([a-zà-ú]+\s+\d{4})/i,
+    /cedolino\s+(?:di\s+)?([a-zà-ú]+\s+\d{4})/i,
+    /paga\s+(?:di\s+)?([a-zà-ú]+\s+\d{4})/i,
+    /retribuzione\s+(?:del\s+)?(?:mese\s+(?:di\s+)?)?([a-zà-ú]+\s+\d{4})/i,
+  ];
+  for (const p of periodPatterns) {
+    const m = t.match(p);
+    if (m?.[1]) {
+      periodMonth = parseItMonth(m[1]) ?? undefined;
+      if (periodMonth) break;
+    }
   }
 
-  // Confidence: alta se abbiamo lordo + netto
   const confidence: 'high' | 'low' =
     grossAmount !== null && netAmount !== null ? 'high' : 'low';
 

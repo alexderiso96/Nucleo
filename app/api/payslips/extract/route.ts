@@ -52,7 +52,29 @@ export async function POST(request: NextRequest) {
 
     const fullText = pageTexts.join('\n');
     const fields = parsePayslipText(fullText);
-    return NextResponse.json({ fields });
+
+    // Debug non-sensibile: niente importi nel body, solo struttura
+    const textSample = fullText
+      .substring(0, 300)
+      .replace(/[0-9]+[.,][0-9]+/g, 'N')   // sostituisce numeri con "N"
+      .replace(/\b\d+\b/g, 'N');
+
+    return NextResponse.json({
+      fields,
+      _debug: {
+        textLength: fullText.length,
+        pagesExtracted: pdf.numPages,
+        textSample,
+        matchedFields: {
+          grossAmount: fields.grossAmount !== undefined,
+          netAmount: fields.netAmount !== undefined,
+          irpef: fields.irpef !== undefined,
+          inps: fields.inpsContributions !== undefined,
+          period: fields.periodMonth !== undefined,
+          employer: fields.employerName !== undefined,
+        },
+      },
+    });
   } catch (err) {
     // Log solo il tipo di errore, mai il contenuto del PDF (dati finanziari)
     const message = err instanceof Error ? err.message : 'unknown';

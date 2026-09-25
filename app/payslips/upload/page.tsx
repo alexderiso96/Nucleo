@@ -13,6 +13,13 @@ import type { PayslipFields, ValidationResult } from '@/lib/payslip-parser';
 
 type Step = 'upload' | 'review' | 'saving' | 'done';
 
+interface ExtractDebug {
+  textLength: number;
+  pagesExtracted: number;
+  textSample: string;
+  matchedFields: Record<string, boolean>;
+}
+
 interface FormState {
   periodMonth: string;
   grossAmount: string;
@@ -166,12 +173,15 @@ function UploadStep({ onFile }: { onFile: (f: File) => void }) {
 // ── Step: Review ──────────────────────────────────────────────────────────────
 
 function ReviewStep({
-  form, confidence, warnings, fileName, onChange, onSave, onReset,
+  form, confidence, warnings, fileName, debug, showDebug, onToggleDebug, onChange, onSave, onReset,
 }: {
   form: FormState;
   confidence: 'high' | 'low';
   warnings: string[];
   fileName: string;
+  debug: ExtractDebug | null;
+  showDebug: boolean;
+  onToggleDebug: () => void;
   onChange: (k: keyof FormState, v: string) => void;
   onSave: () => void;
   onReset: () => void;
@@ -209,6 +219,53 @@ function ReviewStep({
           </button>
         </div>
       </div>
+
+      {/* Debug panel — solo quando l'estrazione fallisce */}
+      {confidence === 'low' && debug && (
+        <div
+          className="rounded-lg overflow-hidden"
+          style={{ border: '1px solid rgba(100,116,139,0.2)', background: 'rgba(15,23,42,0.6)' }}
+        >
+          <button
+            onClick={onToggleDebug}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-white/5"
+          >
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+              Info estrazione PDF
+            </span>
+            <span className="text-[10px] text-slate-500">
+              {debug.pagesExtracted} pag · {debug.textLength} char ·{' '}
+              {showDebug ? '▲ nascondi' : '▼ mostra'}
+            </span>
+          </button>
+          {showDebug && (
+            <div className="px-4 pb-4 flex flex-col gap-3">
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(debug.matchedFields).map(([k, found]) => (
+                  <span
+                    key={k}
+                    className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                    style={found
+                      ? { background: 'rgba(16,185,129,0.12)', color: '#34d399' }
+                      : { background: 'rgba(239,68,68,0.1)', color: '#f87171' }}
+                  >
+                    {found ? '✓' : '✗'} {k}
+                  </span>
+                ))}
+              </div>
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-600 mb-1">
+                  Testo estratto (prime 300 char, numeri sostituiti con N)
+                </p>
+                <pre className="text-[10px] text-slate-400 whitespace-pre-wrap break-all leading-relaxed"
+                  style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 6 }}>
+                  {debug.textSample}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {validation.warnings.length > 0 && (
         <div
@@ -320,6 +377,8 @@ export default function PayslipsUploadPage() {
   const [fileName, setFileName] = useState('');
   const [confidence, setConfidence] = useState<'high' | 'low'>('low');
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [extractDebug, setExtractDebug] = useState<ExtractDebug | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
   const [form, setForm] = useState<FormState>({
     periodMonth: '', grossAmount: '', netAmount: '', irpef: '',
     inpsContributions: '', regionalMunicipalTax: '', overtimeHours: '',
@@ -342,10 +401,11 @@ export default function PayslipsUploadPage() {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch('/api/payslips/extract', { method: 'POST', body: formData });
-      const json = await res.json() as { fields: PayslipFields };
+      const json = await res.json() as { fields: PayslipFields; _debug?: ExtractDebug };
       const fields = json.fields;
       setForm(fieldsToForm(fields));
       setConfidence(fields.confidence);
+      if (json._debug) setExtractDebug(json._debug);
 
       const v = clientValidate(fieldsToForm(fields));
       setWarnings(v.warnings);
@@ -441,6 +501,9 @@ export default function PayslipsUploadPage() {
                   confidence={confidence}
                   warnings={warnings}
                   fileName={fileName}
+                  debug={extractDebug}
+                  showDebug={showDebug}
+                  onToggleDebug={() => setShowDebug(v => !v)}
                   onChange={handleChange}
                   onSave={handleSave}
                   onReset={reset}
