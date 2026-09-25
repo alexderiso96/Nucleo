@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabaseServer';
 
 function generateCode(): string {
@@ -21,21 +22,20 @@ export async function POST() {
     return NextResponse.json({ error: 'Hai già un nucleo familiare' }, { status: 409 });
   }
 
-  const { data: household, error: householdErr } = await supabase
+  const householdId = randomUUID();
+  const { error: householdErr } = await supabase
     .from('households')
-    .insert({ name: 'La mia famiglia' })
-    .select('id')
-    .single();
+    .insert({ id: householdId, name: 'La mia famiglia' });
 
-  if (householdErr || !household) {
+  if (householdErr) {
     console.error('[household/create] households insert error:', householdErr?.code, householdErr?.message);
     return NextResponse.json({ error: 'Errore nella creazione del nucleo' }, { status: 500 });
   }
-  console.log('[household/create] household created:', household.id);
+  console.log('[household/create] household created:', householdId);
 
   const { error: profileErr } = await supabase
     .from('profiles')
-    .update({ household_id: household.id })
+    .update({ household_id: householdId })
     .eq('id', user.id);
 
   if (profileErr) {
@@ -49,12 +49,12 @@ export async function POST() {
 
   const { error: inviteErr } = await supabase
     .from('household_invites')
-    .insert({ household_id: household.id, code, created_by: user.id, expires_at: expiresAt });
+    .insert({ household_id: householdId, code, created_by: user.id, expires_at: expiresAt });
 
   if (inviteErr) {
     console.error('[household/create] invites insert error:', inviteErr?.code, inviteErr?.message);
     return NextResponse.json({ error: 'Errore generazione codice invito' }, { status: 500 });
   }
 
-  return NextResponse.json({ householdId: household.id, inviteCode: code });
+  return NextResponse.json({ householdId: householdId, inviteCode: code });
 }
