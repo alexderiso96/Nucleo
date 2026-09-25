@@ -106,12 +106,13 @@ async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
 // ── Provider 1: Google Gemini (PDF nativo, gratuito) ─────────────────────────
 
 async function extractWithGemini(buffer: ArrayBuffer): Promise<Record<string, unknown>> {
+  console.log('[gemini] init SDK');
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-3.8-flash',
+    model: 'gemini-2.0-flash-lite',
     systemInstruction: SYSTEM_INSTRUCTION,
   });
-
+  console.log('[gemini] calling generateContent, pdf bytes:', buffer.byteLength);
   const result = await model.generateContent([
     {
       inlineData: {
@@ -121,16 +122,20 @@ async function extractWithGemini(buffer: ArrayBuffer): Promise<Record<string, un
     },
     'Estrai i dati da questa busta paga italiana e restituisci il JSON richiesto.',
   ]);
-
-  return parseExtracted(result.response.text());
+  const raw = result.response.text();
+  console.log('[gemini] response length:', raw.length);
+  return parseExtracted(raw);
 }
 
 // ── Provider 2: Groq LLaMA (testo estratto da pdfjs, gratuito) ───────────────
 
 async function extractWithGroq(buffer: ArrayBuffer): Promise<Record<string, unknown>> {
+  console.log('[groq] extracting text from PDF...');
   const text = await extractTextFromPdf(buffer);
+  console.log('[groq] text extracted, length:', text.length);
   if (!text.trim()) throw new Error('empty text');
 
+  console.log('[groq] calling LLM...');
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const chat = await groq.chat.completions.create({
     model: 'llama-3.1-8b-instant',
@@ -149,9 +154,19 @@ async function extractWithGroq(buffer: ArrayBuffer): Promise<Record<string, unkn
 // ── Route principale ──────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  console.log('[extract] START');
+
+  let user;
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (err) {
+    console.error('[extract] auth error:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: 'Auth error' }, { status: 500 });
+  }
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  console.log('[extract] auth OK');
 
   let buffer: ArrayBuffer;
   try {
@@ -161,32 +176,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file' }, { status: 400 });
     }
     buffer = await (file as File).arrayBuffer();
-  } catch {
+    console.log('[extract] file received, bytes:', buffer.byteLength);
+  } catch (err) {
+    console.error('[extract] formData error:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 
-  // Prova Gemini → fallback Groq → fallback manuale
+  // env check
+  console.log('[extract] GOOGLE_AI_API_KEY set:', !!process.env.GOOGLE_AI_API_KEY);
+  console.log('[extract] GROQ_API_KEY set:', !!process.env.GROQ_API_KEY);
+
   const providers: Array<{ name: string; fn: () => Promise<Record<string, unknown>> }> = [
     { name: 'gemini', fn: () => extractWithGemini(buffer) },
     { name: 'groq',   fn: () => extractWithGroq(buffer)   },
   ];
 
   for (const { name, fn } of providers) {
+    console.log(`[extract] trying ${name}...`);
     try {
       const extracted = await fn();
-
-      // Log struttura (mai valori finanziari)
       const foundKeys = Object.entries(extracted)
         .filter(([, v]) => v !== null && v !== undefined)
         .map(([k]) => k);
-      console.log(`[payslips/extract] ${name} found keys:`, foundKeys);
-
+      console.log(`[extract] ${name} OK — found keys:`, foundKeys);
       return NextResponse.json({ fields: buildFields(extracted), _provider: name });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown';
-      console.error(`[payslips/extract] ${name} failed:`, msg);
+      const msg = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack?.split('\n')[1] : '';
+      console.error(`[extract] ${name} FAILED: ${msg}`, stack ?? '');
     }
   }
 
+  console.error('[extract] all providers failed — returning low confidence');
   return NextResponse.json({ fields: { confidence: 'low' as const } });
 }
