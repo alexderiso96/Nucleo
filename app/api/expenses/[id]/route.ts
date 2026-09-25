@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabaseServer';
-
+//commento
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
