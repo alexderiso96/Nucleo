@@ -1,442 +1,365 @@
-'use client';
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Plus, TrendingUp, TrendingDown } from 'lucide-react';
+import { createClient } from '@/lib/supabaseServer';
+import Sidebar from '@/components/Sidebar';
+import PayslipTrendChart from '@/components/PayslipTrendChart';
+import { sortPayslips, buildTrendPoints, computeVariation } from '@/lib/payslip-analytics';
+import { detectPatterns } from '@/lib/payslip-patterns';
+import type { PatternResult } from '@/lib/payslip-patterns';
+import type { Payslip } from '@/lib/types';
 
-import { useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Upload, FileText, CheckCircle, AlertTriangle, Loader2,
-  ChevronRight, RotateCcw,
-} from 'lucide-react';
-import type { PayslipFields, ValidationResult } from '@/lib/payslip-parser';
+const MONTH_FULL = [
+  'Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+  'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre',
+];
 
-// ── Tipi ─────────────────────────────────────────────────────────────────────
+const fmt = (n: number | null | undefined) =>
+  n != null
+    ? new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(Number(n))
+    : '—';
 
-type Step = 'upload' | 'review' | 'saving' | 'done';
-
-interface FormState {
-  periodMonth: string;
-  grossAmount: string;
-  netAmount: string;
-  irpef: string;
-  inpsContributions: string;
-  regionalMunicipalTax: string;
-  overtimeHours: string;
-  overtimeAmount: string;
-  mealVouchers: string;
-  tfrAccruedPeriod: string;
-  tfrTotal: string;
-  employerName: string;
+function periodLabel(p: Payslip): string {
+  const parts = p.period_month.split('-');
+  return `${MONTH_FULL[parseInt(parts[1]) - 1]} ${parts[0]}`;
 }
 
-function fieldsToForm(f: PayslipFields): FormState {
-  const fmt = (n?: number) => (n !== undefined ? String(n) : '');
-  // period_month is "YYYY-MM-01" — convert to input[type=month] format "YYYY-MM"
-  const periodForInput = f.periodMonth ? f.periodMonth.slice(0, 7) : '';
-  return {
-    periodMonth: periodForInput,
-    grossAmount: fmt(f.grossAmount),
-    netAmount: fmt(f.netAmount),
-    irpef: fmt(f.irpef),
-    inpsContributions: fmt(f.inpsContributions),
-    regionalMunicipalTax: fmt(f.regionalMunicipalTax),
-    overtimeHours: fmt(f.overtimeHours),
-    overtimeAmount: fmt(f.overtimeAmount),
-    mealVouchers: fmt(f.mealVouchers),
-    tfrAccruedPeriod: fmt(f.tfrAccruedPeriod),
-    tfrTotal: fmt(f.tfrTotal),
-    employerName: f.employerName ?? '',
-  };
+function monthKey(p: Payslip): string {
+  return p.period_month.substring(0, 7);
 }
 
-function formToPayload(form: FormState, confidence: 'high' | 'low', storagePath?: string) {
-  const num = (s: string) => s.trim() !== '' ? parseFloat(s.replace(',', '.')) : undefined;
-  return {
-    period_month: form.periodMonth ? `${form.periodMonth}-01` : undefined,
-    gross_amount: num(form.grossAmount),
-    net_amount: num(form.netAmount),
-    irpef: num(form.irpef),
-    inps_contributions: num(form.inpsContributions),
-    regional_municipal_tax: num(form.regionalMunicipalTax),
-    overtime_hours: num(form.overtimeHours),
-    overtime_amount: num(form.overtimeAmount),
-    meal_vouchers: num(form.mealVouchers),
-    tfr_accrued_period: num(form.tfrAccruedPeriod),
-    tfr_total: num(form.tfrTotal),
-    employer_name: form.employerName.trim() || undefined,
-    extraction_confidence: confidence,
-    storage_path: storagePath,
-  };
-}
-
-function clientValidate(form: FormState): ValidationResult {
-  const warnings: string[] = [];
-  const gross = parseFloat(form.grossAmount);
-  const net = parseFloat(form.netAmount);
-  const irpef = parseFloat(form.irpef);
-
-  if (!isNaN(gross) && !isNaN(net)) {
-    if (net >= gross) warnings.push('Il netto risulta maggiore o uguale al lordo.');
-    if ((gross - net) / gross > 0.7) warnings.push('Le trattenute superano il 70% del lordo.');
+function parseMonthParam(param: string | undefined, payslips: Payslip[]): string | null {
+  if (param && /^\d{4}-\d{2}$/.test(param)) {
+    if (payslips.find(p => monthKey(p) === param)) return param;
   }
-  if (!isNaN(irpef) && !isNaN(gross) && irpef / gross > 0.5) {
-    warnings.push("L'IRPEF supera il 50% del lordo.");
-  }
-
-  return { valid: warnings.length === 0, warnings };
+  if (payslips.length === 0) return null;
+  return monthKey(payslips[payslips.length - 1]);
 }
 
-// ── Componenti UI ─────────────────────────────────────────────────────────────
-
-function Field({
-  label, name, value, onChange, type = 'text', placeholder,
+export default async function PayslipsPage({
+  searchParams,
 }: {
-  label: string;
-  name: keyof FormState;
-  value: string;
-  onChange: (k: keyof FormState, v: string) => void;
-  type?: string;
-  placeholder?: string;
+  searchParams: Promise<{ month?: string }>;
 }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-        {label}
-      </label>
-      <input
-        type={type}
-        className="input px-3 py-2 text-sm"
-        value={value}
-        placeholder={placeholder}
-        onChange={e => onChange(name, e.target.value)}
-      />
-    </div>
-  );
-}
+  const { month: monthParam } = await searchParams;
 
-// ── Step: Upload ──────────────────────────────────────────────────────────────
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
 
-function UploadStep({ onFile }: { onFile: (f: File) => void }) {
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const { data: rawPayslips } = await supabase
+    .from('payslips')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('period_month', { ascending: true });
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file?.type === 'application/pdf') onFile(file);
-  }, [onFile]);
+  const payslips = (rawPayslips ?? []) as Payslip[];
+  const sorted = sortPayslips(payslips);
+  const selectedMonth = parseMonthParam(monthParam, sorted);
 
-  return (
-    <div className="flex flex-col items-center gap-8">
-      <div>
-        <h1 className="text-xl font-bold text-slate-100 text-center">Carica busta paga</h1>
-        <p className="text-xs text-slate-500 text-center mt-1">
-          Carica un PDF — il testo verrà estratto automaticamente
-        </p>
-      </div>
+  const current = selectedMonth ? (sorted.find(p => monthKey(p) === selectedMonth) ?? null) : null;
+  const currentIdx = current ? sorted.indexOf(current) : -1;
+  const previous = currentIdx > 0 ? sorted[currentIdx - 1] : null;
+  const hasPrev = currentIdx > 0;
+  const hasNext = currentIdx >= 0 && currentIdx < sorted.length - 1;
+  const prevMonth = hasPrev ? monthKey(sorted[currentIdx - 1]) : null;
+  const nextMonth = hasNext ? monthKey(sorted[currentIdx + 1]) : null;
 
-      <div
-        className={`w-full max-w-md border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-4 py-14 px-6 cursor-pointer transition-colors ${dragging ? 'border-indigo-400 bg-indigo-500/5' : 'border-slate-700 hover:border-slate-500'}`}
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
-      >
-        <div
-          className="w-14 h-14 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(99,102,241,0.1)' }}
-        >
-          <Upload size={24} style={{ color: 'var(--brand-400)' }} />
-        </div>
-        <div className="text-center">
-          <p className="text-sm font-medium text-slate-300">Trascina qui il PDF</p>
-          <p className="text-xs text-slate-600 mt-0.5">oppure clicca per sfogliare</p>
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); }}
-        />
-      </div>
-    </div>
-  );
-}
+  const trendData = buildTrendPoints(sorted);
+  const showTrend = trendData.length >= 2;
+  const patterns = detectPatterns(sorted);
 
-// ── Step: Review ──────────────────────────────────────────────────────────────
-
-function ReviewStep({
-  form, confidence, warnings, fileName, onChange, onSave, onReset,
-}: {
-  form: FormState;
-  confidence: 'high' | 'low';
-  warnings: string[];
-  fileName: string;
-  onChange: (k: keyof FormState, v: string) => void;
-  onSave: () => void;
-  onReset: () => void;
-}) {
-  const validation = clientValidate(form);
+  const variation = current && previous ? computeVariation(current, previous) : null;
+  const showAlert = variation && variation.percent > 5;
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-2xl mx-auto">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-100">Verifica i dati</h1>
-          <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
-            <FileText size={11} />
-            {fileName}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          {confidence === 'high' ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400">
-              <CheckCircle size={11} />
-              Estrazione riuscita
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400">
-              <AlertTriangle size={11} />
-              Inserimento manuale
-            </span>
-          )}
-          <button
-            onClick={onReset}
-            className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <RotateCcw size={11} />
-            Ricarica altro file
-          </button>
-        </div>
-      </div>
+    <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
 
-      {validation.warnings.length > 0 && (
-        <div
-          className="flex flex-col gap-1 px-4 py-3 rounded-lg"
-          style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
-        >
-          {validation.warnings.map((w, i) => (
-            <p key={i} className="text-xs text-amber-400 flex items-start gap-2">
-              <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-              {w}
-            </p>
-          ))}
-        </div>
-      )}
-
-      <div className="card p-5 flex flex-col gap-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--brand-400)' }}>
-          Informazioni generali
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Periodo" name="periodMonth" value={form.periodMonth} onChange={onChange} type="month" />
-          <Field label="Datore di lavoro" name="employerName" value={form.employerName} onChange={onChange} placeholder="es. Accenture S.p.A." />
-        </div>
-      </div>
-
-      <div className="card p-5 flex flex-col gap-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--brand-400)' }}>
-          Importi principali
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Lordo (€)" name="grossAmount" value={form.grossAmount} onChange={onChange} placeholder="es. 2800" />
-          <Field label="Netto (€)" name="netAmount" value={form.netAmount} onChange={onChange} placeholder="es. 1950" />
-          <Field label="IRPEF (€)" name="irpef" value={form.irpef} onChange={onChange} placeholder="es. 560" />
-          <Field label="Contributi INPS (€)" name="inpsContributions" value={form.inpsContributions} onChange={onChange} placeholder="es. 240" />
-          <Field label="Add. regionale/comunale (€)" name="regionalMunicipalTax" value={form.regionalMunicipalTax} onChange={onChange} placeholder="es. 50" />
-        </div>
-      </div>
-
-      <div className="card p-5 flex flex-col gap-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--brand-400)' }}>
-          Voci aggiuntive
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Ore straordinario" name="overtimeHours" value={form.overtimeHours} onChange={onChange} placeholder="es. 8" />
-          <Field label="Compenso straordinario (€)" name="overtimeAmount" value={form.overtimeAmount} onChange={onChange} placeholder="es. 120" />
-          <Field label="Buoni pasto (€)" name="mealVouchers" value={form.mealVouchers} onChange={onChange} placeholder="es. 132" />
-          <Field label="TFR maturato periodo (€)" name="tfrAccruedPeriod" value={form.tfrAccruedPeriod} onChange={onChange} placeholder="es. 180" />
-          <Field label="TFR totale accantonato (€)" name="tfrTotal" value={form.tfrTotal} onChange={onChange} placeholder="es. 3600" />
-        </div>
-      </div>
-
-      <button
-        onClick={onSave}
-        disabled={!form.periodMonth}
-        className="btn-primary flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-sm"
-        style={{ opacity: !form.periodMonth ? 0.4 : 1 }}
-      >
-        Salva busta paga
-        <ChevronRight size={16} />
-      </button>
-    </div>
-  );
-}
-
-// ── Step: Saving / Done ───────────────────────────────────────────────────────
-
-function SavingStep() {
-  return (
-    <div className="flex flex-col items-center gap-4">
-      <Loader2 size={40} className="animate-spin" style={{ color: 'var(--brand-400)' }} />
-      <p className="text-sm text-slate-400">Salvataggio in corso…</p>
-    </div>
-  );
-}
-
-function DoneStep({ onReset }: { onReset: () => void }) {
-  return (
-    <div className="flex flex-col items-center gap-6">
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: 'spring', duration: 0.5 }}
-        className="w-16 h-16 rounded-full flex items-center justify-center"
-        style={{ background: 'rgba(16,185,129,0.15)' }}
-      >
-        <CheckCircle size={32} className="text-emerald-400" />
-      </motion.div>
-      <div className="text-center">
-        <h2 className="text-lg font-bold text-slate-100">Busta paga salvata</h2>
-        <p className="text-xs text-slate-500 mt-1">I dati sono stati registrati correttamente.</p>
-      </div>
-      <button onClick={onReset} className="btn-primary px-6 py-2 rounded-lg text-sm font-semibold">
-        Carica un&apos;altra busta paga
-      </button>
-    </div>
-  );
-}
-
-// ── Wizard principale ─────────────────────────────────────────────────────────
-
-export default function PayslipsPage() {
-  const [step, setStep] = useState<Step>('upload');
-  const [fileName, setFileName] = useState('');
-  const [confidence, setConfidence] = useState<'high' | 'low'>('low');
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [form, setForm] = useState<FormState>({
-    periodMonth: '', grossAmount: '', netAmount: '', irpef: '',
-    inpsContributions: '', regionalMunicipalTax: '', overtimeHours: '',
-    overtimeAmount: '', mealVouchers: '', tfrAccruedPeriod: '', tfrTotal: '',
-    employerName: '',
-  });
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<File | null>(null);
-
-  function handleChange(k: keyof FormState, v: string) {
-    setForm(prev => ({ ...prev, [k]: v }));
-  }
-
-  async function handleFile(file: File) {
-    setFileName(file.name);
-    fileRef.current = file;
-    setUploading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/payslips/extract', { method: 'POST', body: formData });
-      const json = await res.json() as { fields: PayslipFields };
-      const fields = json.fields;
-      setForm(fieldsToForm(fields));
-      setConfidence(fields.confidence);
-
-      // Client-side validation warnings
-      const v = clientValidate(fieldsToForm(fields));
-      setWarnings(v.warnings);
-    } catch {
-      setConfidence('low');
-    } finally {
-      setUploading(false);
-      setStep('review');
-    }
-  }
-
-  async function handleSave() {
-    setStep('saving');
-
-    // Upload PDF to Supabase Storage (non-bloccante)
-    let storagePath: string | undefined;
-    if (fileRef.current) {
-      try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        );
-        const safeName = `${Date.now()}_${fileRef.current.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-        const path = `payslips/${safeName}`;
-        const { error } = await supabase.storage.from('payslips').upload(path, fileRef.current, {
-          contentType: 'application/pdf',
-          upsert: true,
-        });
-        if (!error) storagePath = path;
-      } catch { /* storage non bloccante */ }
-    }
-
-    try {
-      const payload = formToPayload(form, confidence, storagePath);
-      await fetch('/api/payslips', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } catch { /* UI gestisce già gli errori */ }
-
-    setStep('done');
-  }
-
-  function reset() {
-    setStep('upload');
-    setFileName('');
-    setConfidence('low');
-    setWarnings([]);
-    setForm({
-      periodMonth: '', grossAmount: '', netAmount: '', irpef: '',
-      inpsContributions: '', regionalMunicipalTax: '', overtimeHours: '',
-      overtimeAmount: '', mealVouchers: '', tfrAccruedPeriod: '', tfrTotal: '',
-      employerName: '',
-    });
-    fileRef.current = null;
-  }
-
-  return (
-    <main className="flex-1 px-6 py-8 overflow-y-auto">
-      <div className="max-w-2xl mx-auto">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            transition={{ duration: 0.22 }}
-          >
-            {step === 'upload' && !uploading && <UploadStep onFile={handleFile} />}
-
-            {step === 'upload' && uploading && (
-              <div className="flex flex-col items-center gap-4">
-                <Loader2 size={40} className="animate-spin" style={{ color: 'var(--brand-400)' }} />
-                <p className="text-sm text-slate-400">Estrazione testo in corso…</p>
+        <header className="flex items-center justify-between px-6 py-3.5 sticky top-0 z-10"
+          style={{ background: 'var(--dark-800)', borderBottom: '1px solid var(--dark-600)' }}>
+          <div className="flex items-center gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-200">Buste paga</h2>
+              {current && (
+                <p className="text-[10px] text-slate-600">{periodLabel(current)}</p>
+              )}
+            </div>
+            {sorted.length > 1 && (
+              <div className="flex items-center gap-1">
+                <Link
+                  href={hasPrev ? `/payslips?month=${prevMonth}` : '#'}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                  style={{
+                    color: hasPrev ? '#475569' : '#1e293b',
+                    border: '1px solid var(--dark-600)',
+                    pointerEvents: hasPrev ? 'auto' : 'none',
+                  }}
+                  title="Mese precedente">
+                  <ChevronLeft size={14} />
+                </Link>
+                <Link
+                  href={hasNext ? `/payslips?month=${nextMonth}` : '#'}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                  style={{
+                    color: hasNext ? '#475569' : '#1e293b',
+                    border: '1px solid var(--dark-600)',
+                    pointerEvents: hasNext ? 'auto' : 'none',
+                  }}
+                  title="Mese successivo">
+                  <ChevronRight size={14} />
+                </Link>
               </div>
             )}
+          </div>
+          <Link href="/payslips/upload"
+            className="btn-primary flex items-center gap-1.5 px-3 py-2 text-xs">
+            <Plus size={13} /> Aggiungi
+          </Link>
+        </header>
 
-            {step === 'review' && (
-              <ReviewStep
-                form={form}
-                confidence={confidence}
-                warnings={warnings}
-                fileName={fileName}
-                onChange={handleChange}
-                onSave={handleSave}
-                onReset={reset}
-              />
-            )}
+        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
 
-            {step === 'saving' && <SavingStep />}
-            {step === 'done' && <DoneStep onReset={reset} />}
-          </motion.div>
-        </AnimatePresence>
+          {/* Empty state */}
+          {sorted.length === 0 && (
+            <div className="card p-12 flex flex-col items-center gap-4 anim-fade text-center">
+              <p className="text-slate-500 text-sm">Nessuna busta paga caricata.</p>
+              <p className="text-slate-600 text-xs max-w-xs">
+                Carica il PDF della tua prima busta paga per vedere l&apos;analisi completa.
+              </p>
+              <Link href="/payslips/upload" className="btn-primary px-4 py-2.5 text-sm mt-2">
+                Carica busta paga
+              </Link>
+            </div>
+          )}
+
+          {current && (
+            <>
+              {/* Alert variazione >5% */}
+              {showAlert && variation && (
+                <div className="rounded-xl px-4 py-3 flex items-start gap-3 anim-slide-up anim-d1"
+                  style={{
+                    background: variation.direction === 'up'
+                      ? 'rgba(52,211,153,0.07)'
+                      : 'rgba(239,68,68,0.07)',
+                    border: `1px solid ${variation.direction === 'up'
+                      ? 'rgba(52,211,153,0.2)'
+                      : 'rgba(239,68,68,0.2)'}`,
+                  }}>
+                  {variation.direction === 'up'
+                    ? <TrendingUp size={15} className="text-emerald-400 mt-0.5 shrink-0" />
+                    : <TrendingDown size={15} className="text-red-400 mt-0.5 shrink-0" />}
+                  <div>
+                    <p className="text-xs font-semibold"
+                      style={{ color: variation.direction === 'up' ? '#34d399' : '#f87171' }}>
+                      Netto {variation.direction === 'up' ? 'aumentato' : 'diminuito'} del {variation.percent.toFixed(1)}% rispetto al mese precedente
+                    </p>
+                    {variation.reason && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">{variation.reason}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Scomposizione principale */}
+              <div className="card p-5 anim-slide-up anim-d2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
+                  Scomposizione — {periodLabel(current)}
+                  {current.employer_name && (
+                    <span className="ml-2 normal-case font-normal text-slate-600">
+                      {current.employer_name}
+                    </span>
+                  )}
+                </p>
+
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div className="rounded-xl p-4"
+                    style={{ background: 'var(--dark-700)', border: '1px solid var(--dark-600)' }}>
+                    <p className="text-[10px] text-slate-600 mb-1">Lordo</p>
+                    <p className="text-xl font-bold text-slate-100 tabular-nums">{fmt(current.gross_amount)}</p>
+                  </div>
+                  <div className="rounded-xl p-4"
+                    style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)' }}>
+                    <p className="text-[10px] text-slate-600 mb-1">Netto</p>
+                    <p className="text-xl font-bold text-emerald-400 tabular-nums">{fmt(current.net_amount)}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-0">
+                  {([
+                    { label: 'IRPEF', value: current.irpef, color: '#f87171' },
+                    { label: 'Contributi INPS', value: current.inps_contributions, color: '#fb923c' },
+                    { label: 'Addizionale regionale/comunale', value: current.regional_municipal_tax, color: '#facc15' },
+                  ] as const).map(row => (
+                    Number(row.value) > 0 ? (
+                      <div key={row.label} className="flex items-center justify-between py-2"
+                        style={{ borderBottom: '1px solid var(--dark-700)' }}>
+                        <span className="text-xs text-slate-400">{row.label}</span>
+                        <span className="text-xs font-semibold tabular-nums" style={{ color: row.color }}>
+                          − {fmt(row.value)}
+                        </span>
+                      </div>
+                    ) : null
+                  ))}
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-[10px] text-slate-600">Totale trattenute</span>
+                    <span className="text-xs font-semibold text-slate-400 tabular-nums">
+                      − {fmt(Number(current.gross_amount) - Number(current.net_amount))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Voci variabili */}
+              {(Number(current.overtime_amount) > 0 || Number(current.meal_vouchers) > 0) && (
+                <div className="card p-5 anim-slide-up anim-d3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
+                    Voci variabili
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {Number(current.overtime_amount) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-slate-400">Straordinari</span>
+                          {Number(current.overtime_hours) > 0 && (
+                            <span className="ml-2 text-[10px] text-slate-600">
+                              {Number(current.overtime_hours).toFixed(1)} ore
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-semibold text-indigo-400 tabular-nums">
+                          {fmt(current.overtime_amount)}
+                        </span>
+                      </div>
+                    )}
+                    {Number(current.meal_vouchers) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-400">Buoni pasto</span>
+                        <span className="text-xs font-semibold text-indigo-400 tabular-nums">
+                          {fmt(current.meal_vouchers)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TFR */}
+              {(Number(current.tfr_accrued_this_period) > 0 || Number(current.tfr_total_accrued) > 0) && (
+                <div className="card p-5 anim-slide-up anim-d4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">TFR</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] text-slate-600 mb-1">Accantonato questo mese</p>
+                      <p className="text-base font-bold text-slate-200 tabular-nums">
+                        {fmt(current.tfr_accrued_this_period)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-600 mb-1">Totale accumulato</p>
+                      <p className="text-base font-bold text-slate-200 tabular-nums">
+                        {fmt(current.tfr_total_accrued)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--dark-700)' }}>
+                    <Link href="/payslips/proiezione"
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                      Simulazione proiezione TFR →
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Pattern rilevati */}
+              {patterns.length > 0 && (
+                <div className="card p-5 anim-slide-up anim-d5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-3">
+                    Pattern rilevati
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {patterns.map((pattern, i) => {
+                      const colors: Record<PatternResult['type'], { bg: string; border: string; text: string }> = {
+                        permanent_increase: { bg: 'rgba(52,211,153,0.07)',  border: 'rgba(52,211,153,0.2)',  text: '#34d399' },
+                        temporary_spike:    { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',  text: '#fbbf24' },
+                        recurring_absence:  { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',   text: '#f87171' },
+                      };
+                      const labels: Record<PatternResult['type'], string> = {
+                        permanent_increase: 'Aumento permanente',
+                        temporary_spike:    'Bonus una tantum',
+                        recurring_absence:  'Assenze ricorrenti',
+                      };
+                      const c = colors[pattern.type];
+                      return (
+                        <div key={i} className="rounded-xl px-3 py-2.5 flex items-start gap-3"
+                          style={{ background: c.bg, border: `1px solid ${c.border}` }}>
+                          <div className="flex-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest"
+                              style={{ color: c.text }}>
+                              {labels[pattern.type]}
+                            </span>
+                            <p className="text-xs text-slate-400 mt-0.5">{pattern.description}</p>
+                          </div>
+                          <span className="text-xs font-semibold tabular-nums shrink-0"
+                            style={{ color: c.text }}>
+                            {pattern.deltaAmount >= 0 ? '+' : ''}
+                            {new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(pattern.deltaAmount)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Trend grafico */}
+              {showTrend && (
+                <div className="card p-5 anim-slide-up anim-d5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
+                    Andamento netto — ultimi {trendData.length} {trendData.length === 1 ? 'mese' : 'mesi'}
+                  </p>
+                  <PayslipTrendChart data={trendData} highlightMonth={selectedMonth ?? undefined} />
+                </div>
+              )}
+            </>
+          )}
+
+          {sorted.length > 0 && (
+            <div className="card p-4 anim-slide-up anim-d6 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Riepilogo annuale</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">
+                  Totali per anno — utile per 730 e dichiarazione dei redditi
+                </p>
+              </div>
+              <Link
+                href="/payslips/annuale"
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors shrink-0"
+              >
+                Apri →
+              </Link>
+            </div>
+          )}
+
+          {sorted.length > 0 && (
+            <div className="card p-4 anim-slide-up flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Simulatore IRPEF</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">
+                  Calcola l&apos;impatto netto di un aumento di stipendio
+                </p>
+              </div>
+              <Link
+                href="/payslips/simulatore"
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors shrink-0"
+              >
+                Apri →
+              </Link>
+            </div>
+          )}
+        </main>
       </div>
-    </main>
+    </div>
   );
 }

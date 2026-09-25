@@ -1,13 +1,40 @@
 @import "tailwindcss";
 
-/* ── Palette Kairos ─────────────────────────────── */
+/* ── Palette Nucleo v2 ─────────────────────────────── */
 :root {
-  --dark-900: #040c18;
-  --dark-800: #0d1526;
-  --dark-700: #162038;
-  --dark-600: #253355;
-  --brand-400: #818cf8;
-  --brand-500: #6366f1;
+  /* Background scale — contrasto reale tra livelli */
+  --bg:         #05101f;   /* pagina */
+  --surface-1:  #0c1b30;   /* card default */
+  --surface-2:  #112340;   /* hover / elevated */
+  --surface-3:  #172d50;   /* selected / active */
+
+  /* Borders */
+  --border:        rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.14);
+
+  /* Text — gerarchia a 3 livelli */
+  --text-1: #eef4ff;    /* numeri importanti, titoli */
+  --text-2: #7c9ab8;    /* etichette secondarie */
+  --text-3: #3d5872;    /* muted, disabled */
+
+  /* Semantici */
+  --income:  #34d399;   /* entrate, positivo */
+  --expense: #fb7185;   /* uscite, negativo */
+  --warning: #fbbf24;
+  --info:    #38bdf8;
+
+  /* Brand */
+  --brand:       #6366f1;
+  --brand-light: #818cf8;
+  --brand-dim:   rgba(99,102,241,0.12);
+
+  /* Retrocompatibilità — variabili vecchie puntate alle nuove */
+  --dark-900: var(--bg);
+  --dark-800: var(--surface-1);
+  --dark-700: var(--surface-2);
+  --dark-600: var(--border);
+  --brand-400: var(--brand-light);
+  --brand-500: var(--brand);
   --brand-600: #4f46e5;
   --brand-700: #4338ca;
 }
@@ -15,9 +42,10 @@
 * { box-sizing: border-box; }
 
 body {
-  background-color: var(--dark-900);
-  color: #f1f5f9;
-  font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', ui-monospace, monospace;
+  background-color: var(--bg);
+  color: var(--text-1);
+  /* Sans-serif per UI, monospace solo dove serve per i numeri */
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   position: relative;
 }
@@ -34,18 +62,18 @@ body::after {
 body::before {
   top: -200px; left: -200px;
   width: 640px; height: 640px;
-  background: radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 68%);
 }
 body::after {
   bottom: -200px; right: -200px;
   width: 520px; height: 520px;
-  background: radial-gradient(circle, rgba(52,211,153,0.04) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(52,211,153,0.035) 0%, transparent 68%);
 }
 
 /* Content above aurora */
 #__next, main, header, aside { position: relative; z-index: 1; }
 
-/* ── Animazioni CSS pure ────────────────────────── */
+/* ── Animazioni CSS ─────────────────────────────── */
 @keyframes fade-in   { from { opacity: 0; }                              to { opacity: 1; } }
 @keyframes slide-up  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slide-left{ from { opacity: 0; transform: translateX(-16px);}  to { opacity: 1; transform: translateX(0); } }
@@ -56,61 +84,85 @@ body::after {
 .anim-slide-left{ animation: slide-left 0.32s ease both; }
 .anim-scale     { animation: scale-in   0.28s ease both; }
 
-.anim-d1 { animation-delay:  40ms; }
-.anim-d2 { animation-delay:  80ms; }
-.anim-d3 { animation-delay: 120ms; }
-.anim-d4 { animation-delay: 160ms; }
-.anim-d5 { animation-delay: 200ms; }
-.anim-d6 { animation-delay: 240ms; }
+.anim-d1 { animation-delay:  50ms; }
+.anim-d2 { animation-delay: 100ms; }
+.anim-d3 { animation-delay: 150ms; }
+.anim-d4 { animation-delay: 200ms; }
+.anim-d5 { animation-delay: 250ms; }
+.anim-d6 { animation-delay: 300ms; }
 
 /* ── Scrollbar ──────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--dark-600); border-radius: 99px; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
 
 /* ── Focus ──────────────────────────────────────── */
-*:focus-visible { outline: 2px solid rgba(99,102,241,0.6); outline-offset: 2px; }
+*:focus-visible { outline: 2px solid rgba(99,102,241,0.5); outline-offset: 2px; }
 
-/* ── Input autofill fix ─────────────────────────── */
+/* ── Autofill ───────────────────────────────────── */
 input:-webkit-autofill,
 input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 40px var(--dark-700) inset;
-  -webkit-text-fill-color: #f1f5f9;
-  caret-color: #f1f5f9;
+  -webkit-box-shadow: 0 0 0 40px var(--surface-2) inset;
+  -webkit-text-fill-color: var(--text-1);
+  caret-color: var(--text-1);
 }
 
-/* ── Card component ─────────────────────────────── */
+/* ── Card ───────────────────────────────────────── */
 .card {
-  background: var(--dark-800);
-  border: 1px solid var(--dark-600);
-  border-radius: 0.75rem;
-  transition: border-color 0.25s ease;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.card:hover { border-color: rgba(99,102,241,0.22); }
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+}
 
 /* ── Pulsante primario ──────────────────────────── */
 .btn-primary {
-  background: var(--brand-600);
+  background: var(--brand);
   color: #fff;
-  border-radius: 0.5rem;
+  border-radius: 0.625rem;
   font-weight: 600;
+  font-size: 0.875rem;
   transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--brand-700);
+  background: #4f46e5;
   transform: translateY(-1px);
-  box-shadow: 0 4px 18px rgba(99,102,241,0.35);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.4);
 }
 .btn-primary:active:not(:disabled) { transform: translateY(0); }
-.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Input ──────────────────────────────────────── */
 .input {
-  background: var(--dark-700);
-  border: 1px solid var(--dark-600);
-  border-radius: 0.5rem;
-  color: #f1f5f9;
-  transition: border-color 0.18s ease;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 0.625rem;
+  color: var(--text-1);
+  font-size: 0.875rem;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
-.input::placeholder { color: #475569; }
-.input:focus { border-color: var(--brand-500); outline: none; }
+.input::placeholder { color: var(--text-3); }
+.input:focus {
+  border-color: var(--brand);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+
+/* ── Numero in tabular ──────────────────────────── */
+.tabular-nums { font-variant-numeric: tabular-nums; font-family: 'SF Mono', ui-monospace, monospace; }
+
+/* ── Badge categorie ────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}

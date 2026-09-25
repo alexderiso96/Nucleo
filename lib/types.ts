@@ -28,7 +28,7 @@ export interface Expense {
 export interface Payslip {
   id: string;
   user_id: string;
-  period_month: string;
+  period_month: string;         // "YYYY-MM-01"
   gross_amount: number;
   net_amount: number;
   irpef: number;
@@ -40,5 +40,8 @@ export interface Payslip {
   tfr_accrued_this_period: number;
   tfr_total_accrued: number;
   source_file_url: string | null;
+  employer_name: string | null;
+  extraction_confidence: string | null;
+  storage_path: string | null;
   created_at: string;
 }

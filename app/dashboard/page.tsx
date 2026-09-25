@@ -5,8 +5,8 @@ import { createClient } from '@/lib/supabaseServer';
 import Sidebar from '@/components/Sidebar';
 import LogoutButton from '@/components/LogoutButton';
 import ExpenseForm from '@/components/ExpenseForm';
-import AnimatedStats from '@/components/AnimatedStats';
 import AnimatedExpenseList from '@/components/AnimatedExpenseList';
+import DashboardStats from '@/components/DashboardStats';
 
 function parseMonthParam(param: string | undefined): { year: number; month: number } {
   if (param && /^\d{4}-\d{2}$/.test(param)) {
@@ -50,6 +50,36 @@ export default async function DashboardPage({
 
   const list = expenses ?? [];
   const totalMonth = list.reduce((sum, e) => sum + Number(e.amount), 0);
+
+  // Netto del mese corrente da buste paga (per "Entrate")
+  const { data: payslipThisMonth } = await supabase
+    .from('payslips')
+    .select('net_amount')
+    .eq('user_id', user.id)
+    .eq('period_month', `${year}-${String(month + 1).padStart(2, '0')}-01`)
+    .maybeSingle();
+
+  const incomeMonth = Number(payslipThisMonth?.net_amount ?? 0);
+
+  // Spese mese precedente (per trend %)
+  const prevFirst = new Date(year, month - 1, 1).toISOString().split('T')[0];
+  const prevLast  = new Date(year, month, 0).toISOString().split('T')[0];
+  const { data: prevExpenses } = await supabase
+    .from('expenses')
+    .select('amount')
+    .eq('user_id', user.id)
+    .gte('expense_date', prevFirst)
+    .lte('expense_date', prevLast);
+  const prevTotalMonth = (prevExpenses ?? []).reduce((s, e) => s + Number(e.amount), 0);
+
+  // Spese giornaliere per sparkline
+  const dailyMap: Record<string, number> = {};
+  for (const e of list) {
+    dailyMap[e.expense_date] = (dailyMap[e.expense_date] ?? 0) + Number(e.amount);
+  }
+  const dailyExpenses = Object.entries(dailyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, total]) => ({ date, total }));
 
   const now = new Date();
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
@@ -109,7 +139,14 @@ export default async function DashboardPage({
         </header>
 
         <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
-          <AnimatedStats totalMonth={totalMonth} count={list.length} monthLabel={monthLabel} />
+          <DashboardStats
+            totalMonth={totalMonth}
+            incomeMonth={incomeMonth}
+            prevTotalMonth={prevTotalMonth}
+            count={list.length}
+            monthLabel={monthLabel}
+            dailyExpenses={dailyExpenses}
+          />
           <div className="card p-5 anim-slide-up anim-d3">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">Nuova spesa</p>
             <ExpenseForm />

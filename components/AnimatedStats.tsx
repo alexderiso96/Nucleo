@@ -1,3 +1,4 @@
+// Deprecato — usa DashboardStats
 'use client';
 
 import { useEffect, useState } from 'react';
