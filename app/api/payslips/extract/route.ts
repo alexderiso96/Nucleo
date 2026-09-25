@@ -71,7 +71,13 @@ async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
   );
   pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
 
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false }).promise;
+  // standardFontDataUrl necessario su Vercel serverless (non trova i font localmente)
+  const PDFJS_CDN = 'https://unpkg.com/pdfjs-dist@6.3.289/standard_fonts/';
+  const pdf = await pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    useWorkerFetch: false,
+    standardFontDataUrl: PDFJS_CDN,
+  }).promise;
   let fullText = '';
 
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -102,7 +108,7 @@ async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
 async function extractWithGemini(buffer: ArrayBuffer): Promise<Record<string, unknown>> {
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     systemInstruction: SYSTEM_INSTRUCTION,
   });
 
