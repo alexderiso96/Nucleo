@@ -2,10 +2,8 @@
 
 import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
-import { ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
-import { createClient } from '@/lib/supabaseClient';
+import { Upload, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import {
   decodeBuffer,
   headersFingerprint,
@@ -36,48 +34,7 @@ interface ImportResult {
 const fmt = (n: number) =>
   new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
 
-const btnOutline: React.CSSProperties = {
-  border: '1px solid var(--accent)',
-  color: 'var(--accent)',
-  background: 'transparent',
-  borderRadius: '0.25rem',
-  fontSize: '0.875rem',
-  fontWeight: 500,
-  cursor: 'pointer',
-  padding: '0.625rem 1.25rem',
-  transition: 'background 0.15s ease, color 0.15s ease',
-  fontFamily: 'inherit',
-};
-
-const btnGhost: React.CSSProperties = {
-  border: '1px solid var(--border)',
-  color: 'var(--text-2)',
-  background: 'transparent',
-  borderRadius: '0.25rem',
-  fontSize: '0.875rem',
-  fontWeight: 400,
-  cursor: 'pointer',
-  padding: '0.625rem 1.25rem',
-  transition: 'color 0.15s ease',
-  fontFamily: 'inherit',
-};
-
-const selectStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  borderBottom: '1px solid var(--border)',
-  color: 'var(--text-1)',
-  width: '100%',
-  padding: '0.5rem 0',
-  fontSize: '0.875rem',
-  fontFamily: 'inherit',
-  colorScheme: 'dark' as React.CSSProperties['colorScheme'],
-  outline: 'none',
-  cursor: 'pointer',
-};
-
 export default function ImportPage() {
-  const router = useRouter();
   const [step, setStep] = useState<Step>('upload');
   const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
   const [columnMap, setColumnMap] = useState<Partial<ColumnMap>>({});
@@ -89,12 +46,6 @@ export default function ImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push('/login');
-  }
 
   // ── Processa il file ────────────────────────────────────────────────────────
 
@@ -148,9 +99,16 @@ export default function ImportPage() {
     const fp = headersFingerprint(headers);
     const auto = autoDetectMapping(headers);
 
-    const pf: ParsedFile = { headers, records, fingerprint: fp, encoding, fileName: file.name };
+    const pf: ParsedFile = {
+      headers,
+      records,
+      fingerprint: fp,
+      encoding,
+      fileName: file.name,
+    };
     setParsedFile(pf);
 
+    // Cerca mappatura salvata
     try {
       const res = await fetch(`/api/csv/mappings?fingerprint=${encodeURIComponent(fp)}`);
       const json = await res.json() as { mapping: ColumnMap | null };
@@ -179,6 +137,8 @@ export default function ImportPage() {
     setInvalidRows(invalid);
   }
 
+  // ── Drag & drop ─────────────────────────────────────────────────────────────
+
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
@@ -191,24 +151,37 @@ export default function ImportPage() {
     if (file) await processFile(file);
   }, [processFile]);
 
+  // ── Salva mapping ───────────────────────────────────────────────────────────
+
   async function handleSaveMapping() {
     if (!parsedFile) return;
     const map = columnMap as ColumnMap;
     map.sourceName = sourceName || 'Sconosciuta';
+
     try {
       await fetch('/api/csv/mappings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fingerprint: parsedFile.fingerprint, sourceName: map.sourceName, columnMap: map }),
+        body: JSON.stringify({
+          fingerprint: parsedFile.fingerprint,
+          sourceName: map.sourceName,
+          columnMap: map,
+        }),
       });
-    } catch { /* non bloccare l'utente */ }
+    } catch {
+      // non bloccare l'utente se il salvataggio fallisce
+    }
+
     applyMapping(parsedFile, map);
     setStep('preview');
   }
 
+  // ── Import ──────────────────────────────────────────────────────────────────
+
   async function handleImport() {
     setStep('importing');
     setError(null);
+
     try {
       const res = await fetch('/api/csv/import', {
         method: 'POST',
@@ -221,7 +194,12 @@ export default function ImportPage() {
         setStep('preview');
         return;
       }
-      setResult({ imported: json.imported, duplicates: json.duplicates, total: json.total, discarded: invalidRows.length });
+      setResult({
+        imported: json.imported,
+        duplicates: json.duplicates,
+        total: json.total,
+        discarded: invalidRows.length,
+      });
       setStep('done');
     } catch {
       setError('Errore di rete durante l\'importazione.');
@@ -242,53 +220,48 @@ export default function ImportPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  const labelClass = 'text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5 block';
+  const selectClass = 'input w-full px-3 py-2.5 text-sm';
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-
-      {/* Header */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: '42rem', margin: '0 auto', padding: '0 1.5rem', height: '3.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', textDecoration: 'none' }}>
-            <div style={{ width: '1.375rem', height: '1.375rem', borderRadius: '0.25rem', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700, color: '#0e1512' }}>N</div>
-            <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-1)' }}>Nucleo</span>
-          </Link>
-          <button onClick={handleLogout} style={{ fontSize: '0.75rem', color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Esci</button>
-        </div>
-        <nav style={{ maxWidth: '42rem', margin: '0 auto', padding: '0 1.5rem', height: '2.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem', borderTop: '1px solid var(--border)' }}>
-          {[
-            { href: '/dashboard', label: 'Dashboard', active: false },
-            { href: '/import',    label: 'Importa',   active: true  },
-            { href: '/payslips',  label: 'Buste paga', active: false },
-          ].map(item => (
-            <Link key={item.href} href={item.href} style={{ fontSize: '0.75rem', fontWeight: item.active ? 600 : 400, color: item.active ? 'var(--accent)' : 'var(--text-3)', padding: '0.25rem 0.5rem', textDecoration: 'none', borderBottom: item.active ? '1px solid var(--accent)' : '1px solid transparent', marginBottom: '-1px', transition: 'color 0.15s ease' }}>{item.label}</Link>
-          ))}
-        </nav>
+    <div className="min-h-screen" style={{ background: 'var(--dark-900)' }}>
+      <header
+        className="flex items-center gap-3 px-6 py-4 sticky top-0 z-10"
+        style={{ background: 'var(--dark-800)', borderBottom: '1px solid var(--dark-600)' }}
+      >
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          <ArrowLeft size={14} /> Dashboard
+        </Link>
+        <span className="text-slate-700">/</span>
+        <span className="text-sm font-semibold text-slate-300">Importa CSV</span>
       </header>
 
-      <main style={{ maxWidth: '42rem', margin: '0 auto', padding: '2rem 1.5rem 4rem' }}>
-
+      <main className="max-w-2xl mx-auto px-6 py-8">
         {/* Nota privacy */}
-        <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '1.5rem' }}>
+        <p className="text-[10px] text-slate-700 mb-6">
           Nessun dato finanziario viene registrato nei log di sistema.
         </p>
 
-        {/* Errore */}
         {error && (
-          <p style={{ color: 'var(--negative)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+          <div
+            className="mb-4 px-4 py-3 rounded-xl text-sm text-red-400"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)' }}
+          >
             {error}
-          </p>
+          </div>
         )}
 
         {/* ── Step: upload ─────────────────────────────────────────────────── */}
         {step === 'upload' && (
-          <div>
-            <h1 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-1)', marginBottom: '0.5rem' }}>
-              Importa estratto conto
-            </h1>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-2)', marginBottom: '2rem' }}>
-              Carica un file CSV o Excel della tua banca. Le colonne vengono mappate automaticamente o guidate la prima volta.
+          <div className="card p-8 anim-scale">
+            <h1 className="text-base font-semibold text-slate-200 mb-2">Importa estratto conto</h1>
+            <p className="text-xs text-slate-500 mb-6">
+              Carica un file CSV esportato dalla tua banca. Le colonne vengono mappate automaticamente o guidate la prima volta.
             </p>
 
             <div
@@ -296,30 +269,24 @@ export default function ImportPage() {
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all duration-200 py-12"
               style={{
-                border: `1px dashed ${dragging ? 'var(--accent)' : 'var(--border-strong)'}`,
-                borderRadius: '0.25rem',
-                padding: '3rem 2rem',
-                textAlign: 'center',
-                cursor: 'pointer',
-                background: dragging ? 'rgba(201,162,39,0.04)' : 'transparent',
-                transition: 'border-color 0.15s ease, background 0.15s ease',
-                marginBottom: '1rem',
+                border: `2px dashed ${dragging ? 'var(--brand-500)' : 'var(--dark-600)'}`,
+                background: dragging ? 'rgba(16,185,129,0.05)' : 'var(--dark-700)',
               }}
             >
-              <p style={{ fontSize: '0.9375rem', color: 'var(--text-2)', marginBottom: '0.375rem' }}>
-                Trascina un file CSV o Excel qui
-              </p>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)' }}>
-                oppure clicca per sfogliare · .csv, .xlsx
-              </p>
+              <Upload size={24} className="text-slate-600" />
+              <div className="text-center">
+                <p className="text-sm text-slate-400">Trascina un file CSV o Excel qui</p>
+                <p className="text-xs text-slate-600 mt-1">oppure clicca per selezionare · .csv, .xlsx</p>
+              </div>
             </div>
 
             <input
               ref={fileInputRef}
               type="file"
               accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              style={{ display: 'none' }}
+              className="hidden"
               onChange={handleFileChange}
             />
           </div>
@@ -327,35 +294,53 @@ export default function ImportPage() {
 
         {/* ── Step: mapping ────────────────────────────────────────────────── */}
         {step === 'mapping' && parsedFile && (
-          <div>
-            <h1 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-1)', marginBottom: '0.25rem' }}>
-              Abbina le colonne
+          <div className="card p-6 anim-scale">
+            <h1 className="text-base font-semibold text-slate-200 mb-1">
+              Prima volta con questo estratto conto — mappa le colonne
             </h1>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--text-2)', marginBottom: '2rem' }}>
-              File: <span style={{ color: 'var(--text-1)' }}>{parsedFile.fileName}</span>
-              {parsedFile.encoding === 'Excel' && <span style={{ color: 'var(--info)', marginLeft: '0.5rem' }}>· Excel</span>}
+            <p className="text-xs text-slate-500 mb-6">
+              File: <span className="text-slate-400">{parsedFile.fileName}</span>
+              {parsedFile.encoding === 'Excel' && (
+                <span className="ml-2 text-sky-400">· Excel</span>
+              )}
               {parsedFile.encoding !== 'UTF-8' && parsedFile.encoding !== 'Excel' && (
-                <span style={{ color: 'var(--warning)', marginLeft: '0.5rem' }}>· {parsedFile.encoding} rilevato</span>
+                <span className="ml-2 text-amber-400">· {parsedFile.encoding} rilevato</span>
               )}
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="flex flex-col gap-4">
               <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Nome fonte (es. Fineco, ING, Intesa)</label>
-                <input type="text" value={sourceName} onChange={e => setSourceName(e.target.value)} placeholder="Nome della banca" className="field" />
+                <label className={labelClass}>Nome fonte (es. Fineco, ING, Intesa)</label>
+                <input
+                  type="text"
+                  value={sourceName}
+                  onChange={e => setSourceName(e.target.value)}
+                  placeholder="Nome della banca"
+                  className="input w-full px-3 py-2.5 text-sm"
+                />
               </div>
 
               <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Colonna Data</label>
-                <select value={columnMap.date ?? ''} onChange={e => setColumnMap(m => ({ ...m, date: e.target.value }))} style={selectStyle}>
+                <label className={labelClass}>Colonna Data</label>
+                <select
+                  value={columnMap.date ?? ''}
+                  onChange={e => setColumnMap(m => ({ ...m, date: e.target.value }))}
+                  className={selectClass}
+                  style={{ appearance: 'none', colorScheme: 'dark' }}
+                >
                   <option value="">— seleziona —</option>
                   {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Tipo importo</label>
-                <select value={columnMap.amountType ?? 'single'} onChange={e => setColumnMap(m => ({ ...m, amountType: e.target.value as 'single' | 'split' }))} style={selectStyle}>
+                <label className={labelClass}>Tipo importo</label>
+                <select
+                  value={columnMap.amountType ?? 'single'}
+                  onChange={e => setColumnMap(m => ({ ...m, amountType: e.target.value as 'single' | 'split' }))}
+                  className={selectClass}
+                  style={{ appearance: 'none', colorScheme: 'dark' }}
+                >
                   <option value="single">Colonna singola</option>
                   <option value="split">Dare / Avere separati</option>
                 </select>
@@ -363,8 +348,13 @@ export default function ImportPage() {
 
               {(!columnMap.amountType || columnMap.amountType === 'single') && (
                 <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Colonna Importo</label>
-                  <select value={columnMap.amount ?? ''} onChange={e => setColumnMap(m => ({ ...m, amount: e.target.value }))} style={selectStyle}>
+                  <label className={labelClass}>Colonna Importo</label>
+                  <select
+                    value={columnMap.amount ?? ''}
+                    onChange={e => setColumnMap(m => ({ ...m, amount: e.target.value }))}
+                    className={selectClass}
+                    style={{ appearance: 'none', colorScheme: 'dark' }}
+                  >
                     <option value="">— seleziona —</option>
                     {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
@@ -374,15 +364,25 @@ export default function ImportPage() {
               {columnMap.amountType === 'split' && (
                 <>
                   <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Colonna Dare (uscite)</label>
-                    <select value={columnMap.debit ?? ''} onChange={e => setColumnMap(m => ({ ...m, debit: e.target.value }))} style={selectStyle}>
+                    <label className={labelClass}>Colonna Dare (uscite)</label>
+                    <select
+                      value={columnMap.debit ?? ''}
+                      onChange={e => setColumnMap(m => ({ ...m, debit: e.target.value }))}
+                      className={selectClass}
+                      style={{ appearance: 'none', colorScheme: 'dark' }}
+                    >
                       <option value="">— opzionale —</option>
                       {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Colonna Avere (entrate)</label>
-                    <select value={columnMap.credit ?? ''} onChange={e => setColumnMap(m => ({ ...m, credit: e.target.value }))} style={selectStyle}>
+                    <label className={labelClass}>Colonna Avere (entrate)</label>
+                    <select
+                      value={columnMap.credit ?? ''}
+                      onChange={e => setColumnMap(m => ({ ...m, credit: e.target.value }))}
+                      className={selectClass}
+                      style={{ appearance: 'none', colorScheme: 'dark' }}
+                    >
                       <option value="">— opzionale —</option>
                       {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
@@ -391,16 +391,26 @@ export default function ImportPage() {
               )}
 
               <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Colonna Descrizione (opzionale)</label>
-                <select value={columnMap.description ?? ''} onChange={e => setColumnMap(m => ({ ...m, description: e.target.value || undefined }))} style={selectStyle}>
+                <label className={labelClass}>Colonna Descrizione (opzionale)</label>
+                <select
+                  value={columnMap.description ?? ''}
+                  onChange={e => setColumnMap(m => ({ ...m, description: e.target.value || undefined }))}
+                  className={selectClass}
+                  style={{ appearance: 'none', colorScheme: 'dark' }}
+                >
                   <option value="">— nessuna —</option>
                   {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Colonna Tipo (opzionale)</label>
-                <select value={columnMap.typeColumn ?? ''} onChange={e => setColumnMap(m => ({ ...m, typeColumn: e.target.value || undefined }))} style={selectStyle}>
+                <label className={labelClass}>Colonna Tipo (opzionale)</label>
+                <select
+                  value={columnMap.typeColumn ?? ''}
+                  onChange={e => setColumnMap(m => ({ ...m, typeColumn: e.target.value || undefined }))}
+                  className={selectClass}
+                  style={{ appearance: 'none', colorScheme: 'dark' }}
+                >
                   <option value="">— nessuna —</option>
                   {parsedFile.headers.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
@@ -408,8 +418,13 @@ export default function ImportPage() {
 
               {columnMap.typeColumn && (
                 <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-2)', display: 'block', marginBottom: '0.375rem' }}>Filtra per tipo</label>
-                  <select value={columnMap.typeFilter ?? 'debit'} onChange={e => setColumnMap(m => ({ ...m, typeFilter: e.target.value as 'debit' | 'credit' | 'all' }))} style={selectStyle}>
+                  <label className={labelClass}>Filtra per tipo</label>
+                  <select
+                    value={columnMap.typeFilter ?? 'debit'}
+                    onChange={e => setColumnMap(m => ({ ...m, typeFilter: e.target.value as 'debit' | 'credit' | 'all' }))}
+                    className={selectClass}
+                    style={{ appearance: 'none', colorScheme: 'dark' }}
+                  >
                     <option value="debit">Solo addebiti (uscite)</option>
                     <option value="credit">Solo accrediti (entrate)</option>
                     <option value="all">Tutti</option>
@@ -417,12 +432,14 @@ export default function ImportPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '0.5rem' }}>
-                <button onClick={() => setStep('upload')} style={btnGhost}>Indietro</button>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setStep('upload')} className="px-4 py-2.5 text-sm text-slate-400 rounded-lg transition-colors hover:text-slate-200" style={{ border: '1px solid var(--dark-600)' }}>
+                  Indietro
+                </button>
                 <button
                   onClick={handleSaveMapping}
                   disabled={!columnMap.date || (!columnMap.amount && !columnMap.debit && !columnMap.credit)}
-                  style={{ ...btnOutline, flex: 1, opacity: (!columnMap.date || (!columnMap.amount && !columnMap.debit && !columnMap.credit)) ? 0.35 : 1 }}
+                  className="btn-primary flex-1 py-2.5 text-sm"
                 >
                   Salva e continua
                 </button>
@@ -433,61 +450,80 @@ export default function ImportPage() {
 
         {/* ── Step: preview ────────────────────────────────────────────────── */}
         {step === 'preview' && parsedFile && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-1)' }}>Anteprima importazione</h2>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--text-2)' }}>
-                  <span style={{ color: 'var(--positive)' }}>{validRows.length} valide</span>
-                  {invalidRows.length > 0 && <> · <span style={{ color: 'var(--warning)' }}>{invalidRows.length} scartate</span></>}
+          <div className="flex flex-col gap-4 anim-scale">
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold text-slate-200">Anteprima importazione</h2>
+                <span className="text-xs text-slate-500">
+                  {parsedFile.records.length} righe · <span className="text-emerald-400">{validRows.length} valide</span>
+                  {invalidRows.length > 0 && <> · <span className="text-amber-400">{invalidRows.length} scartate</span></>}
                 </span>
               </div>
 
               {validRows.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <tr style={{ borderBottom: '1px solid var(--dark-600)' }}>
                       {['Data', 'Importo', 'Descrizione'].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '0.375rem 0', fontSize: '0.75rem', color: 'var(--text-3)', fontWeight: 500 }}>{h}</th>
+                        <th key={h} className="text-left py-2 text-[10px] uppercase tracking-widest text-slate-600 font-semibold pb-2">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {validRows.slice(0, 5).map(r => (
-                      <tr key={r.rawIndex} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '0.625rem 0', fontSize: '0.8125rem', color: 'var(--text-2)' }} className="tabular-nums">{r.date}</td>
-                        <td style={{ padding: '0.625rem 0', fontSize: '0.8125rem', color: 'var(--text-1)' }} className="tabular-nums">{fmt(r.amount)}</td>
-                        <td style={{ padding: '0.625rem 0', fontSize: '0.8125rem', color: 'var(--text-2)', maxWidth: '12rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description ?? '—'}</td>
+                      <tr key={r.rawIndex} style={{ borderBottom: '1px solid var(--dark-700)' }}>
+                        <td className="py-2 text-slate-400 tabular-nums">{r.date}</td>
+                        <td className="py-2 text-slate-200 tabular-nums">{fmt(r.amount)}</td>
+                        <td className="py-2 text-slate-500 truncate max-w-[200px]">{r.description ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               ) : (
-                <p style={{ fontSize: '0.875rem', color: 'var(--warning)' }}>Nessuna riga valida trovata. Torna indietro e controlla la mappatura.</p>
+                <p className="text-sm text-amber-400">Nessuna riga valida trovata. Torna indietro e controlla la mappatura.</p>
               )}
             </div>
 
             {invalidRows.length > 0 && (
-              <div style={{ borderTop: '1px solid var(--border)' }}>
-                <button onClick={() => setShowDiscarded(v => !v)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0.75rem 0', fontSize: '0.8125rem', color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <div className="card overflow-hidden">
+                <button
+                  onClick={() => setShowDiscarded(v => !v)}
+                  className="w-full flex items-center justify-between px-5 py-3.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                >
                   <span>{invalidRows.length} righe scartate</span>
                   {showDiscarded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
-                {showDiscarded && invalidRows.slice(0, 5).map(r => (
-                  <div key={r.rawIndex} style={{ padding: '0.375rem 0', fontSize: '0.8125rem', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--text-3)', marginRight: '0.5rem' }}>Riga {r.rawIndex}</span>
-                    <span style={{ color: 'var(--warning)' }}>{r.reason}</span>
+                {showDiscarded && (
+                  <div style={{ borderTop: '1px solid var(--dark-600)' }}>
+                    {invalidRows.slice(0, 5).map(r => (
+                      <div key={r.rawIndex} className="px-5 py-2.5 text-xs" style={{ borderBottom: '1px solid var(--dark-700)' }}>
+                        <span className="text-slate-600 mr-2">Riga {r.rawIndex}</span>
+                        <span className="text-amber-400">{r.reason}</span>
+                      </div>
+                    ))}
+                    {invalidRows.length > 5 && (
+                      <div className="px-5 py-2 text-xs text-slate-600">
+                        …e altre {invalidRows.length - 5} righe
+                      </div>
+                    )}
                   </div>
-                ))}
-                {showDiscarded && invalidRows.length > 5 && (
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', padding: '0.375rem 0' }}>…e altre {invalidRows.length - 5} righe</p>
                 )}
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={() => setStep('upload')} style={btnGhost}>Indietro</button>
-              <button onClick={handleImport} disabled={validRows.length === 0} style={{ ...btnOutline, flex: 1, opacity: validRows.length === 0 ? 0.35 : 1 }}>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep('upload')}
+                className="px-4 py-2.5 text-sm text-slate-400 rounded-lg transition-colors hover:text-slate-200"
+                style={{ border: '1px solid var(--dark-600)' }}
+              >
+                Indietro
+              </button>
+              <button
+                onClick={handleImport}
+                disabled={validRows.length === 0}
+                className="btn-primary flex-1 py-2.5 text-sm"
+              >
                 Importa {validRows.length} spese
               </button>
             </div>
@@ -496,36 +532,40 @@ export default function ImportPage() {
 
         {/* ── Step: importing ──────────────────────────────────────────────── */}
         {step === 'importing' && (
-          <div style={{ padding: '4rem 0', textAlign: 'center' }}>
-            <Loader2 size={24} className="animate-spin" style={{ color: 'var(--accent)', display: 'inline-block', marginBottom: '1rem' }} />
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-2)' }}>Importazione in corso…</p>
+          <div className="card p-12 flex flex-col items-center gap-4 anim-fade">
+            <Loader2 size={32} className="animate-spin" style={{ color: 'var(--brand)' }} />
+            <p className="text-sm text-slate-400">Importazione in corso…</p>
           </div>
         )}
 
         {/* ── Step: done ───────────────────────────────────────────────────── */}
         {step === 'done' && result && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '2rem' }}>
-              <Check size={18} style={{ color: 'var(--positive)' }} />
-              <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-1)' }}>Importazione completata</h2>
+          <div className="card p-8 anim-scale">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(52,211,153,0.15)' }}>
+                <Check size={16} className="text-emerald-400" />
+              </div>
+              <h2 className="text-base font-semibold text-slate-200">Importazione completata</h2>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'var(--border)', marginBottom: '2rem' }}>
+            <div className="grid grid-cols-3 gap-3 mb-8">
               {[
-                { label: 'Importate',         value: result.imported,   color: 'var(--positive)' },
-                { label: 'Duplicate ignorate', value: result.duplicates, color: 'var(--text-2)'   },
-                { label: 'Scartate',           value: result.discarded,  color: 'var(--warning)'  },
+                { label: 'Importate', value: result.imported, color: 'text-emerald-400' },
+                { label: 'Duplicate (ignorate)', value: result.duplicates, color: 'text-slate-400' },
+                { label: 'Scartate', value: result.discarded, color: 'text-amber-400' },
               ].map(({ label, value, color }) => (
-                <div key={label} style={{ background: 'var(--surface)', padding: '1.25rem', textAlign: 'center' }}>
-                  <p style={{ fontSize: '1.75rem', fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{value}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>{label}</p>
+                <div key={label} className="rounded-xl p-4 text-center" style={{ background: 'var(--dark-700)', border: '1px solid var(--dark-600)' }}>
+                  <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+                  <p className="text-[10px] text-slate-600 mt-1 uppercase tracking-wider">{label}</p>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={reset} style={{ ...btnGhost, flex: 1 }}>Importa un altro file</button>
-              <Link href="/dashboard" style={{ ...btnOutline, flex: 1, textAlign: 'center', textDecoration: 'none', display: 'block', paddingTop: '0.625rem', paddingBottom: '0.625rem' }}>
+            <div className="flex gap-3">
+              <button onClick={reset} className="flex-1 px-4 py-2.5 text-sm text-slate-400 rounded-lg transition-colors hover:text-slate-200" style={{ border: '1px solid var(--dark-600)' }}>
+                Importa un altro file
+              </button>
+              <Link href="/dashboard" className="btn-primary flex-1 py-2.5 text-sm text-center">
                 Vai alla dashboard
               </Link>
             </div>

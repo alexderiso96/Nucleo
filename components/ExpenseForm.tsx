@@ -1,44 +1,21 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import { createClient } from '@/lib/supabaseClient';
 import { CATEGORIES } from '@/lib/categories';
-import { Plus, Check, Loader2 } from 'lucide-react';
-
-const CATEGORY_DOTS: Record<string, string> = {
-  alimentari:      '#6FA287',
-  ristoranti:      '#C9A227',
-  trasporti:       '#5B8BB0',
-  casa:            '#B07E59',
-  salute:          '#C1666B',
-  sport:           '#4BA09A',
-  abbigliamento:   '#9485C8',
-  intrattenimento: '#BE7A9A',
-  utenze:          '#7A9090',
-  altro:           '#5A6B67',
-};
+import { Plus, Check, Loader2, X } from 'lucide-react';
 
 function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-const defaultCategory = 'alimentari';
-
-const underlineInput: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  borderBottom: '1px solid var(--border)',
-  color: 'var(--text-1)',
-  padding: '0.5rem 0',
-  width: '100%',
-  outline: 'none',
-  fontFamily: 'inherit',
-  transition: 'border-color 0.15s ease',
-};
+const defaultCategory = 'altro';
 
 export default function ExpenseForm() {
   const router = useRouter();
+  const [expanded, setExpanded] = useState(false);
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(defaultCategory);
   const [date, setDate] = useState(todayISO());
@@ -46,11 +23,27 @@ export default function ExpenseForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [catOpen, setCatOpen] = useState(false);
-  const catRef = useRef<HTMLDivElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const selectedCat = CATEGORIES.find(c => c.value === category) ?? CATEGORIES[0];
-  const selectedDot = CATEGORY_DOTS[category] ?? '#5A6B67';
+  useEffect(() => {
+    if (!expanded) return;
+    function onPointerDown(e: PointerEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setExpanded(false);
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [expanded]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setExpanded(false);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,159 +80,167 @@ export default function ExpenseForm() {
       setDate(todayISO());
       setCategory(defaultCategory);
       setSuccess(true);
-      setTimeout(() => { setSuccess(false); router.refresh(); }, 1500);
+      setExpanded(false);
+      setTimeout(() => { setSuccess(false); }, 1800);
+      router.refresh();
     }
     setLoading(false);
   }
 
+  const selectedCat = CATEGORIES.find(c => c.value === category) ?? CATEGORIES[CATEGORIES.length - 1];
+
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
+    <div ref={containerRef}>
+      <form onSubmit={handleSubmit}>
+        {/* ── Barra compatta (sempre visibile) ── */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold"
+              style={{ color: 'var(--text-3)' }}>€</span>
+            <input
+              ref={amountRef}
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              onFocus={() => setExpanded(true)}
+              placeholder="0,00"
+              className="input w-full pl-7 pr-3 py-2.5 tabular-nums"
+              style={{ fontSize: '1rem', fontWeight: 600 }}
+            />
+          </div>
 
-      {/* Riga 1 — importo */}
-      <div style={{ position: 'relative' }}>
-        <span style={{
-          position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-          color: 'var(--text-3)', fontSize: '1.125rem', pointerEvents: 'none',
-        }}>
-          €
-        </span>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-          placeholder="0,00"
-          style={{ ...underlineInput, paddingLeft: '1.5rem', fontSize: '1.125rem', fontWeight: 600 }}
-          onFocus={e => (e.currentTarget.style.borderBottomColor = 'var(--accent)')}
-          onBlur={e => (e.currentTarget.style.borderBottomColor = 'var(--border)')}
-        />
-      </div>
-
-      {/* Riga 2 — categoria · data · aggiungi */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '1rem',
-        padding: '0.75rem 0',
-        borderBottom: '1px solid var(--border)',
-        flexWrap: 'wrap',
-      }}>
-        {/* Categoria */}
-        <div ref={catRef} style={{ position: 'relative' }}>
           <button
             type="button"
-            onClick={() => setCatOpen(v => !v)}
+            onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0"
             style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: 'var(--text-2)', fontSize: '0.875rem', fontFamily: 'inherit', padding: 0,
+              background: selectedCat.darkBg,
+              color: selectedCat.darkText,
+              border: `1px solid ${selectedCat.darkText}26`,
+              whiteSpace: 'nowrap',
             }}
           >
-            <span style={{
-              display: 'inline-block', width: 8, height: 8,
-              borderRadius: '50%', background: selectedDot, flexShrink: 0,
-            }} />
-            <span>{selectedCat.label}</span>
-            <span style={{ color: 'var(--text-3)', fontSize: '0.7rem' }}>▾</span>
+            <span>{selectedCat.icon}</span>
+            <span className="text-xs">{selectedCat.label}</span>
           </button>
 
-          {catOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-              background: 'var(--surface)', border: '1px solid var(--border)',
-              zIndex: 50, minWidth: '180px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-            }}>
-              {CATEGORIES.map(cat => {
-                const dot = CATEGORY_DOTS[cat.value] ?? '#5A6B67';
-                const active = cat.value === category;
-                return (
-                  <button
-                    key={cat.value}
-                    type="button"
-                    onClick={() => { setCategory(cat.value); setCatOpen(false); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.625rem',
-                      width: '100%', padding: '0.5rem 0.875rem',
-                      background: active ? 'rgba(201,162,39,0.08)' : 'none',
-                      border: 'none', cursor: 'pointer',
-                      color: active ? 'var(--accent)' : 'var(--text-1)',
-                      fontSize: '0.875rem', fontFamily: 'inherit', textAlign: 'left',
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, display: 'inline-block', flexShrink: 0 }} />
-                    {cat.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="px-3 py-2.5 rounded-xl text-xs shrink-0 transition-colors hover:opacity-80"
+            style={{
+              background: 'var(--surface-2)',
+              color: 'var(--text-2)',
+              border: '1px solid var(--border-strong)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {date === todayISO() ? 'Oggi' : new Date(date + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+          </button>
 
-        <span aria-hidden style={{ color: 'var(--border)', userSelect: 'none' }}>·</span>
-
-        {/* Data */}
-        <input
-          type="date"
-          value={date}
-          onChange={e => setDate(e.target.value)}
-          style={{
-            background: 'none', border: 'none', outline: 'none',
-            color: 'var(--text-2)', fontSize: '0.875rem', fontFamily: 'inherit',
-            cursor: 'pointer', colorScheme: 'dark',
-          }}
-        />
-
-        {/* Submit */}
-        <div style={{ marginLeft: 'auto' }}>
           <button
             type="submit"
             disabled={loading || !amount}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.375rem',
-              padding: '0.375rem 0.875rem',
-              border: success ? '1px solid var(--positive)' : '1px solid var(--accent)',
-              background: 'none',
-              color: success ? 'var(--positive)' : 'var(--accent)',
-              fontSize: '0.875rem', fontFamily: 'inherit', fontWeight: 500,
-              cursor: loading || !amount ? 'not-allowed' : 'pointer',
-              opacity: loading || !amount ? 0.45 : 1,
-              transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
-            }}
-            onMouseEnter={e => {
-              if (!loading && amount && !success) {
-                (e.currentTarget).style.background = 'var(--accent)';
-                (e.currentTarget).style.color = '#101B1A';
-              }
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget).style.background = 'none';
-              (e.currentTarget).style.color = success ? 'var(--positive)' : 'var(--accent)';
-            }}
+            className="btn-primary flex items-center justify-center gap-1.5 px-4 py-2.5 shrink-0"
+            style={success ? { background: '#059669', boxShadow: '0 4px 14px rgba(5,150,105,0.3)' } : {}}
           >
             {success
-              ? <><Check size={14} /> Aggiunta</>
+              ? <Check size={15} />
               : loading
-              ? <Loader2 size={14} className="animate-spin" />
-              : <><Plus size={14} /> Aggiungi</>}
+              ? <Loader2 size={15} className="animate-spin" />
+              : <Plus size={15} />}
+            <span className="text-sm">{success ? 'Ok' : 'Aggiungi'}</span>
           </button>
         </div>
-      </div>
 
-      {/* Riga 3 — descrizione */}
-      <input
-        type="text"
-        value={description}
-        onChange={e => setDescription(e.target.value)}
-        placeholder="Descrizione (opzionale)"
-        style={{ ...underlineInput, fontSize: '0.875rem', color: 'var(--text-2)' }}
-        onFocus={e => (e.currentTarget.style.borderBottomColor = 'var(--accent)')}
-        onBlur={e => (e.currentTarget.style.borderBottomColor = 'var(--border)')}
-      />
+        {/* ── Pannello espanso ── */}
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div className="rounded-2xl p-4 flex flex-col gap-4"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border-strong)' }}>
 
-      {error && (
-        <p style={{ color: 'var(--negative)', fontSize: '0.8125rem', marginTop: '0.75rem' }}>
-          {error}
-        </p>
-      )}
-    </form>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest"
+                    style={{ color: 'var(--text-3)' }}>Categoria</p>
+                  <button type="button" onClick={() => setExpanded(false)}
+                    className="w-6 h-6 flex items-center justify-center rounded-lg hover:opacity-70 transition-opacity"
+                    style={{ color: 'var(--text-3)' }}>
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-5 gap-2">
+                  {CATEGORIES.map(cat => {
+                    const active = category === cat.value;
+                    return (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => setCategory(cat.value)}
+                        className="flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl text-center transition-all"
+                        style={{
+                          background: active ? cat.darkBg : 'transparent',
+                          border: active
+                            ? `1.5px solid ${cat.darkText}50`
+                            : '1.5px solid transparent',
+                          color: active ? cat.darkText : 'var(--text-3)',
+                        }}
+                      >
+                        <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{cat.icon}</span>
+                        <span className="text-[10px] font-semibold leading-tight">{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 block"
+                      style={{ color: 'var(--text-3)' }}>Data</label>
+                    <input
+                      type="date"
+                      value={date}
+                      onChange={e => setDate(e.target.value)}
+                      className="input w-full px-3 py-2 text-sm"
+                      style={{ colorScheme: 'dark' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 block"
+                      style={{ color: 'var(--text-3)' }}>Descrizione</label>
+                    <input
+                      type="text"
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      placeholder="es. Supermercato…"
+                      className="input w-full px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {error && (
+          <p className="text-xs mt-3 px-3 py-2 rounded-lg"
+            style={{
+              color: '#fca5a5',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.18)',
+            }}>
+            {error}
+          </p>
+        )}
+      </form>
+    </div>
   );
 }

@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, TrendingUp, TrendingDown } from 'lucide-react';
 import { createClient } from '@/lib/supabaseServer';
-import NucleoHeader from '@/components/NucleoHeader';
+import Sidebar from '@/components/Sidebar';
 import PayslipTrendChart from '@/components/PayslipTrendChart';
 import { sortPayslips, buildTrendPoints, computeVariation } from '@/lib/payslip-analytics';
 import { detectPatterns } from '@/lib/payslip-patterns';
@@ -35,37 +35,6 @@ function parseMonthParam(param: string | undefined, payslips: Payslip[]): string
   if (payslips.length === 0) return null;
   return monthKey(payslips[payslips.length - 1]);
 }
-
-const ROW_STYLE: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '0.625rem 0',
-  borderBottom: '1px solid var(--border)',
-};
-
-const LABEL_STYLE: React.CSSProperties = {
-  fontSize: '0.875rem',
-  color: 'var(--text-2)',
-};
-
-const VALUE_STYLE: React.CSSProperties = {
-  fontSize: '0.875rem',
-  color: 'var(--text-1)',
-  fontVariantNumeric: 'tabular-nums',
-};
-
-const PATTERN_COLORS: Record<PatternResult['type'], { text: string }> = {
-  permanent_increase: { text: 'var(--positive)' },
-  temporary_spike:    { text: 'var(--accent)'   },
-  recurring_absence:  { text: 'var(--negative)' },
-};
-
-const PATTERN_LABELS: Record<PatternResult['type'], string> = {
-  permanent_increase: 'Aumento permanente',
-  temporary_spike:    'Bonus una tantum',
-  recurring_absence:  'Assenze ricorrenti',
-};
 
 export default async function PayslipsPage({
   searchParams,
@@ -103,297 +72,294 @@ export default async function PayslipsPage({
   const variation = current && previous ? computeVariation(current, previous) : null;
   const showAlert = variation && variation.percent > 5;
 
-  const emailInitial = (user.email?.[0] ?? '?').toUpperCase();
-
-  const addButton = (
-    <Link
-      href="/payslips/upload"
-      style={{
-        fontSize: '0.8125rem',
-        color: 'var(--accent)',
-        border: '1px solid var(--accent)',
-        borderRadius: '0.25rem',
-        padding: '0.3rem 0.75rem',
-        textDecoration: 'none',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      + Aggiungi
-    </Link>
-  );
-
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <NucleoHeader
-        userInitial={emailInitial}
-        activeNav="payslips"
-        rightSlot={addButton}
-      />
+    <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
 
-      <main style={{ maxWidth: '42rem', margin: '0 auto', padding: '0 1.5rem 4rem' }}>
-
-        {/* Empty state */}
-        {sorted.length === 0 && (
-          <div style={{ paddingTop: '4rem', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-2)', marginBottom: '0.5rem' }}>
-              Nessuna busta paga caricata.
-            </p>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginBottom: '1.5rem' }}>
-              Carica il PDF della tua prima busta paga per vedere l&apos;analisi completa.
-            </p>
-            <Link
-              href="/payslips/upload"
-              style={{
-                fontSize: '0.875rem',
-                color: 'var(--accent)',
-                border: '1px solid var(--accent)',
-                borderRadius: '0.25rem',
-                padding: '0.5rem 1.25rem',
-                textDecoration: 'none',
-              }}
-            >
-              Carica busta paga
-            </Link>
-          </div>
-        )}
-
-        {current && (
-          <>
-            {/* Navigazione mesi */}
-            <div style={{
-              paddingTop: '2rem',
-              paddingBottom: '1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}>
-              <span style={{ fontSize: '0.875rem', color: 'var(--text-2)', textTransform: 'capitalize' }}>
-                {periodLabel(current)}
-              </span>
-              {sorted.length > 1 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Link
-                    href={hasPrev ? `/payslips?month=${prevMonth}` : '#'}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: '1.75rem', height: '1.75rem', borderRadius: '0.25rem',
-                      color: hasPrev ? 'var(--text-3)' : 'var(--border)',
-                      textDecoration: 'none',
-                      pointerEvents: hasPrev ? 'auto' : 'none',
-                    }}
-                  >
-                    <ChevronLeft size={14} />
-                  </Link>
-                  <Link
-                    href={hasNext ? `/payslips?month=${nextMonth}` : '#'}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: '1.75rem', height: '1.75rem', borderRadius: '0.25rem',
-                      color: hasNext ? 'var(--text-3)' : 'var(--border)',
-                      textDecoration: 'none',
-                      pointerEvents: hasNext ? 'auto' : 'none',
-                    }}
-                  >
-                    <ChevronRight size={14} />
-                  </Link>
-                </div>
+        <header className="flex items-center justify-between px-6 py-3.5 sticky top-0 z-10"
+          style={{ background: 'var(--dark-800)', borderBottom: '1px solid var(--dark-600)' }}>
+          <div className="flex items-center gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-200">Buste paga</h2>
+              {current && (
+                <p className="text-[10px] text-slate-600">{periodLabel(current)}</p>
               )}
             </div>
+            {sorted.length > 1 && (
+              <div className="flex items-center gap-1">
+                <Link
+                  href={hasPrev ? `/payslips?month=${prevMonth}` : '#'}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                  style={{
+                    color: hasPrev ? '#475569' : '#1e293b',
+                    border: '1px solid var(--dark-600)',
+                    pointerEvents: hasPrev ? 'auto' : 'none',
+                  }}
+                  title="Mese precedente">
+                  <ChevronLeft size={14} />
+                </Link>
+                <Link
+                  href={hasNext ? `/payslips?month=${nextMonth}` : '#'}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                  style={{
+                    color: hasNext ? '#475569' : '#1e293b',
+                    border: '1px solid var(--dark-600)',
+                    pointerEvents: hasNext ? 'auto' : 'none',
+                  }}
+                  title="Mese successivo">
+                  <ChevronRight size={14} />
+                </Link>
+              </div>
+            )}
+          </div>
+          <Link href="/payslips/upload"
+            className="btn-primary flex items-center gap-1.5 px-3 py-2 text-xs">
+            <Plus size={13} /> Aggiungi
+          </Link>
+        </header>
 
-            {/* Alert variazione */}
-            {showAlert && variation && (
-              <div style={{ paddingBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
-                <p style={{
-                  fontSize: '0.8125rem',
-                  color: variation.direction === 'up' ? 'var(--positive)' : 'var(--negative)',
-                }}>
-                  {variation.direction === 'up' ? '↑' : '↓'} Netto{' '}
-                  {variation.direction === 'up' ? 'aumentato' : 'diminuito'} del{' '}
-                  {variation.percent.toFixed(1)}% rispetto al mese precedente
-                  {variation.reason && (
-                    <span style={{ color: 'var(--text-3)', marginLeft: '0.5rem', fontWeight: 400 }}>
-                      · {variation.reason}
+        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
+
+          {/* Empty state */}
+          {sorted.length === 0 && (
+            <div className="card p-12 flex flex-col items-center gap-4 anim-fade text-center">
+              <p className="text-slate-500 text-sm">Nessuna busta paga caricata.</p>
+              <p className="text-slate-600 text-xs max-w-xs">
+                Carica il PDF della tua prima busta paga per vedere l&apos;analisi completa.
+              </p>
+              <Link href="/payslips/upload" className="btn-primary px-4 py-2.5 text-sm mt-2">
+                Carica busta paga
+              </Link>
+            </div>
+          )}
+
+          {current && (
+            <>
+              {/* Alert variazione >5% */}
+              {showAlert && variation && (
+                <div className="rounded-xl px-4 py-3 flex items-start gap-3 anim-slide-up anim-d1"
+                  style={{
+                    background: variation.direction === 'up'
+                      ? 'rgba(52,211,153,0.07)'
+                      : 'rgba(239,68,68,0.07)',
+                    border: `1px solid ${variation.direction === 'up'
+                      ? 'rgba(52,211,153,0.2)'
+                      : 'rgba(239,68,68,0.2)'}`,
+                  }}>
+                  {variation.direction === 'up'
+                    ? <TrendingUp size={15} className="text-emerald-400 mt-0.5 shrink-0" />
+                    : <TrendingDown size={15} className="text-red-400 mt-0.5 shrink-0" />}
+                  <div>
+                    <p className="text-xs font-semibold"
+                      style={{ color: variation.direction === 'up' ? '#34d399' : '#f87171' }}>
+                      Netto {variation.direction === 'up' ? 'aumentato' : 'diminuito'} del {variation.percent.toFixed(1)}% rispetto al mese precedente
+                    </p>
+                    {variation.reason && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">{variation.reason}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Scomposizione principale */}
+              <div className="card p-5 anim-slide-up anim-d2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
+                  Scomposizione — {periodLabel(current)}
+                  {current.employer_name && (
+                    <span className="ml-2 normal-case font-normal text-slate-600">
+                      {current.employer_name}
                     </span>
                   )}
                 </p>
-              </div>
-            )}
 
-            {/* Scomposizione */}
-            <section style={{ paddingTop: showAlert ? '1.5rem' : 0 }}>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
-                Scomposizione
-                {current.employer_name && ` · ${current.employer_name}`}
-              </p>
-
-              {/* Lordo + Netto hero */}
-              <div style={{ display: 'flex', gap: '2rem', marginBottom: '1.25rem' }}>
-                <div>
-                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '0.25rem' }}>Lordo</p>
-                  <p className="tabular-nums" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-1)' }}>
-                    {fmt(current.gross_amount)}
-                  </p>
-                </div>
-                <div>
-                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '0.25rem' }}>Netto</p>
-                  <p className="tabular-nums" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--positive)' }}>
-                    {fmt(current.net_amount)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Trattenute */}
-              {([
-                { label: 'IRPEF', value: current.irpef },
-                { label: 'Contributi INPS', value: current.inps_contributions },
-                { label: 'Addizionale regionale/comunale', value: current.regional_municipal_tax },
-              ] as const).map(row =>
-                Number(row.value) > 0 ? (
-                  <div key={row.label} style={ROW_STYLE}>
-                    <span style={LABEL_STYLE}>{row.label}</span>
-                    <span className="tabular-nums" style={{ ...VALUE_STYLE, color: 'var(--negative)' }}>
-                      − {fmt(row.value)}
-                    </span>
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div className="rounded-xl p-4"
+                    style={{ background: 'var(--dark-700)', border: '1px solid var(--dark-600)' }}>
+                    <p className="text-[10px] text-slate-600 mb-1">Lordo</p>
+                    <p className="text-xl font-bold text-slate-100 tabular-nums">{fmt(current.gross_amount)}</p>
                   </div>
-                ) : null
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>Totale trattenute</span>
-                <span className="tabular-nums" style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>
-                  − {fmt(Number(current.gross_amount) - Number(current.net_amount))}
-                </span>
-              </div>
-            </section>
-
-            {/* Voci variabili */}
-            {(Number(current.overtime_amount) > 0 || Number(current.meal_vouchers) > 0) && (
-              <section style={{ paddingTop: '1.75rem' }}>
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
-                    Voci variabili
-                  </p>
-                  {Number(current.overtime_amount) > 0 && (
-                    <div style={ROW_STYLE}>
-                      <span style={LABEL_STYLE}>
-                        Straordinari
-                        {Number(current.overtime_hours) > 0 && (
-                          <span style={{ color: 'var(--text-3)', marginLeft: '0.5rem', fontSize: '0.8125rem' }}>
-                            ({Number(current.overtime_hours).toFixed(1)} ore)
-                          </span>
-                        )}
-                      </span>
-                      <span className="tabular-nums" style={{ ...VALUE_STYLE, color: 'var(--positive)' }}>
-                        {fmt(current.overtime_amount)}
-                      </span>
-                    </div>
-                  )}
-                  {Number(current.meal_vouchers) > 0 && (
-                    <div style={ROW_STYLE}>
-                      <span style={LABEL_STYLE}>Buoni pasto</span>
-                      <span className="tabular-nums" style={{ ...VALUE_STYLE, color: 'var(--positive)' }}>
-                        {fmt(current.meal_vouchers)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {/* TFR */}
-            {(Number(current.tfr_accrued_this_period) > 0 || Number(current.tfr_total_accrued) > 0) && (
-              <section style={{ paddingTop: '1.75rem' }}>
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: '1rem' }}>TFR</p>
-                  <div style={ROW_STYLE}>
-                    <span style={LABEL_STYLE}>Accantonato questo mese</span>
-                    <span className="tabular-nums" style={VALUE_STYLE}>{fmt(current.tfr_accrued_this_period)}</span>
-                  </div>
-                  <div style={ROW_STYLE}>
-                    <span style={LABEL_STYLE}>Totale accumulato</span>
-                    <span className="tabular-nums" style={{ ...VALUE_STYLE, fontWeight: 600 }}>
-                      {fmt(current.tfr_total_accrued)}
-                    </span>
+                  <div className="rounded-xl p-4"
+                    style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)' }}>
+                    <p className="text-[10px] text-slate-600 mb-1">Netto</p>
+                    <p className="text-xl font-bold text-emerald-400 tabular-nums">{fmt(current.net_amount)}</p>
                   </div>
                 </div>
-              </section>
-            )}
 
-            {/* Pattern */}
-            {patterns.length > 0 && (
-              <section style={{ paddingTop: '1.75rem' }}>
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
-                    Pattern rilevati
-                  </p>
-                  {patterns.map((pattern, i) => {
-                    const c = PATTERN_COLORS[pattern.type];
-                    return (
-                      <div key={i} style={{ ...ROW_STYLE, alignItems: 'flex-start', gap: '1rem' }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: '0.8125rem', color: c.text, fontWeight: 500 }}>
-                            {PATTERN_LABELS[pattern.type]}
-                          </p>
-                          <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginTop: '0.125rem' }}>
-                            {pattern.description}
-                          </p>
-                        </div>
-                        <span className="tabular-nums" style={{ fontSize: '0.8125rem', color: c.text, fontWeight: 600, flexShrink: 0 }}>
-                          {pattern.deltaAmount >= 0 ? '+' : ''}
-                          {new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(pattern.deltaAmount)}
+                <div className="flex flex-col gap-0">
+                  {([
+                    { label: 'IRPEF', value: current.irpef, color: '#f87171' },
+                    { label: 'Contributi INPS', value: current.inps_contributions, color: '#fb923c' },
+                    { label: 'Addizionale regionale/comunale', value: current.regional_municipal_tax, color: '#facc15' },
+                  ] as const).map(row => (
+                    Number(row.value) > 0 ? (
+                      <div key={row.label} className="flex items-center justify-between py-2"
+                        style={{ borderBottom: '1px solid var(--dark-700)' }}>
+                        <span className="text-xs text-slate-400">{row.label}</span>
+                        <span className="text-xs font-semibold tabular-nums" style={{ color: row.color }}>
+                          − {fmt(row.value)}
                         </span>
                       </div>
-                    );
-                  })}
+                    ) : null
+                  ))}
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-[10px] text-slate-600">Totale trattenute</span>
+                    <span className="text-xs font-semibold text-slate-400 tabular-nums">
+                      − {fmt(Number(current.gross_amount) - Number(current.net_amount))}
+                    </span>
+                  </div>
                 </div>
-              </section>
-            )}
+              </div>
 
-            {/* Trend */}
-            {showTrend && (
-              <section style={{ paddingTop: '1.75rem' }}>
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
+              {/* Voci variabili */}
+              {(Number(current.overtime_amount) > 0 || Number(current.meal_vouchers) > 0) && (
+                <div className="card p-5 anim-slide-up anim-d3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
+                    Voci variabili
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {Number(current.overtime_amount) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-slate-400">Straordinari</span>
+                          {Number(current.overtime_hours) > 0 && (
+                            <span className="ml-2 text-[10px] text-slate-600">
+                              {Number(current.overtime_hours).toFixed(1)} ore
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--brand-light)' }}>
+                          {fmt(current.overtime_amount)}
+                        </span>
+                      </div>
+                    )}
+                    {Number(current.meal_vouchers) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-400">Buoni pasto</span>
+                        <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--brand-light)' }}>
+                          {fmt(current.meal_vouchers)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TFR */}
+              {(Number(current.tfr_accrued_this_period) > 0 || Number(current.tfr_total_accrued) > 0) && (
+                <div className="card p-5 anim-slide-up anim-d4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">TFR</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] text-slate-600 mb-1">Accantonato questo mese</p>
+                      <p className="text-base font-bold text-slate-200 tabular-nums">
+                        {fmt(current.tfr_accrued_this_period)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-600 mb-1">Totale accumulato</p>
+                      <p className="text-base font-bold text-slate-200 tabular-nums">
+                        {fmt(current.tfr_total_accrued)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--dark-700)' }}>
+                    <Link href="/payslips/proiezione"
+                      className="text-xs transition-colors" style={{ color: 'var(--brand)' }}>
+                      Simulazione proiezione TFR →
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Pattern rilevati */}
+              {patterns.length > 0 && (
+                <div className="card p-5 anim-slide-up anim-d5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-3">
+                    Pattern rilevati
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {patterns.map((pattern, i) => {
+                      const colors: Record<PatternResult['type'], { bg: string; border: string; text: string }> = {
+                        permanent_increase: { bg: 'rgba(52,211,153,0.07)',  border: 'rgba(52,211,153,0.2)',  text: '#34d399' },
+                        temporary_spike:    { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.2)',  text: '#fbbf24' },
+                        recurring_absence:  { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',   text: '#f87171' },
+                      };
+                      const labels: Record<PatternResult['type'], string> = {
+                        permanent_increase: 'Aumento permanente',
+                        temporary_spike:    'Bonus una tantum',
+                        recurring_absence:  'Assenze ricorrenti',
+                      };
+                      const c = colors[pattern.type];
+                      return (
+                        <div key={i} className="rounded-xl px-3 py-2.5 flex items-start gap-3"
+                          style={{ background: c.bg, border: `1px solid ${c.border}` }}>
+                          <div className="flex-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest"
+                              style={{ color: c.text }}>
+                              {labels[pattern.type]}
+                            </span>
+                            <p className="text-xs text-slate-400 mt-0.5">{pattern.description}</p>
+                          </div>
+                          <span className="text-xs font-semibold tabular-nums shrink-0"
+                            style={{ color: c.text }}>
+                            {pattern.deltaAmount >= 0 ? '+' : ''}
+                            {new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(pattern.deltaAmount)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Trend grafico */}
+              {showTrend && (
+                <div className="card p-5 anim-slide-up anim-d5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
                     Andamento netto — ultimi {trendData.length} {trendData.length === 1 ? 'mese' : 'mesi'}
                   </p>
                   <PayslipTrendChart data={trendData} highlightMonth={selectedMonth ?? undefined} />
                 </div>
-              </section>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
 
-        {/* Link sezioni */}
-        {sorted.length > 0 && (
-          <section style={{ paddingTop: '1.75rem' }}>
-            <div style={{ borderTop: '1px solid var(--border)' }}>
-              {[
-                { href: '/payslips/proiezione', label: 'Proiezione TFR' },
-                { href: '/payslips/annuale',    label: 'Riepilogo annuale' },
-                { href: '/payslips/simulatore', label: 'Simulatore IRPEF' },
-              ].map(link => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '0.75rem 0',
-                    borderBottom: '1px solid var(--border)',
-                    fontSize: '0.875rem',
-                    color: 'var(--text-1)',
-                    textDecoration: 'none',
-                  }}
-                >
-                  {link.label}
-                  <ChevronRight size={14} style={{ color: 'var(--text-3)' }} />
-                </Link>
-              ))}
+          {sorted.length > 0 && (
+            <div className="card p-4 anim-slide-up anim-d6 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Riepilogo annuale</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">
+                  Totali per anno — utile per 730 e dichiarazione dei redditi
+                </p>
+              </div>
+              <Link
+                href="/payslips/annuale"
+                className="text-xs transition-colors shrink-0" style={{ color: 'var(--brand)' }}
+              >
+                Apri →
+              </Link>
             </div>
-          </section>
-        )}
-      </main>
+          )}
+
+          {sorted.length > 0 && (
+            <div className="card p-4 anim-slide-up flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Simulatore IRPEF</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">
+                  Calcola l&apos;impatto netto di un aumento di stipendio
+                </p>
+              </div>
+              <Link
+                href="/payslips/simulatore"
+                className="text-xs transition-colors shrink-0" style={{ color: 'var(--brand)' }}
+              >
+                Apri →
+              </Link>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

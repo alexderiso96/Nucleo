@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ArrowLeft, AlertTriangle, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabaseServer';
-import NucleoHeader from '@/components/NucleoHeader';
+import Sidebar from '@/components/Sidebar';
 import AnnualeActions from '@/components/AnnualeActions';
 import { buildAnnualSummary, monthName } from '@/lib/payslip-annual';
 import type { Payslip } from '@/lib/types';
@@ -14,12 +15,12 @@ const MONTH_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott'
 function YearSelector({ years, selected }: { years: number[]; selected: number }) {
   return (
     <div className="flex items-center gap-2 no-print">
-      <label style={{ fontSize: '0.6875rem', color: 'var(--text-3)' }}>Anno</label>
+      <label className="text-[10px] text-slate-500 uppercase tracking-widest">Anno</label>
       <select
         defaultValue={selected}
         onChange={e => { window.location.href = `/payslips/annuale?year=${e.target.value}`; }}
         className="input px-2 py-1 text-xs"
-        style={{ appearance: 'none', colorScheme: 'dark', fontSize: '0.8125rem', borderRadius: '0.25rem' }}
+        style={{ appearance: 'none', colorScheme: 'dark' }}
       >
         {years.map(y => <option key={y} value={y}>{y}</option>)}
       </select>
@@ -57,14 +58,6 @@ export default async function AnnualePage({
       : (yearsWithData[0] ?? currentYear);
 
   const summary = buildAnnualSummary(payslips, selectedYear);
-  const emailInitial = (user.email?.[0] ?? '?').toUpperCase();
-
-  const rightSlot = (
-    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-      <YearSelector years={yearsWithData} selected={selectedYear} />
-      {summary.payslips.length > 0 && <AnnualeActions summary={summary} />}
-    </div>
-  );
 
   return (
     <>
@@ -73,131 +66,157 @@ export default async function AnnualePage({
           .no-print { display: none !important; }
           .print-only { display: block !important; }
           body { background: white !important; color: black !important; }
+          .card { background: white !important; border: 1px solid #e2e8f0 !important; box-shadow: none !important; }
         }
         .print-only { display: none; }
       `}</style>
 
-      <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-        <div className="no-print">
-          <NucleoHeader
-            userInitial={emailInitial}
-            activeNav="payslips"
-            backHref="/payslips"
-            backLabel="Buste paga"
-            pageTitle="Riepilogo annuale"
-            rightSlot={rightSlot}
-          />
-        </div>
+      <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
+        <div className="no-print"><Sidebar /></div>
+        <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Intestazione stampa */}
-        <div className="print-only" style={{ padding: '1.5rem 1.5rem 0.5rem' }}>
-          <p style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-            Riepilogo buste paga {selectedYear}
-          </p>
-          <p style={{ fontSize: '0.75rem', color: '#64748b' }}>
-            Generato il {new Date().toLocaleDateString('it-IT')}
-          </p>
-        </div>
-
-        <main style={{ maxWidth: '42rem', margin: '0 auto', padding: '0 1.5rem 4rem' }}>
-
-          {summary.payslips.length === 0 && (
-            <div style={{ paddingTop: '3rem', textAlign: 'center' }}>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-2)', marginBottom: '1rem' }}>
-                Nessuna busta paga per il {selectedYear}.
-              </p>
+          <header
+            className="flex items-center justify-between px-6 py-3.5 sticky top-0 z-10 no-print"
+            style={{ background: 'var(--dark-800)', borderBottom: '1px solid var(--dark-600)' }}
+          >
+            <div className="flex items-center gap-3">
               <Link
-                href="/payslips/upload"
-                className="no-print"
-                style={{
-                  fontSize: '0.875rem',
-                  color: 'var(--accent)',
-                  border: '1px solid var(--accent)',
-                  borderRadius: '0.25rem',
-                  padding: '0.5rem 1.25rem',
-                  textDecoration: 'none',
-                }}
+                href="/payslips"
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
               >
-                Carica busta paga
+                <ArrowLeft size={14} /> Buste paga
               </Link>
+              <span className="text-slate-700">/</span>
+              <span className="text-sm font-semibold text-slate-300">Riepilogo annuale</span>
             </div>
-          )}
+            <div className="flex items-center gap-3">
+              <YearSelector years={yearsWithData} selected={selectedYear} />
+              {summary.payslips.length > 0 && <AnnualeActions summary={summary} />}
+            </div>
+          </header>
 
-          {summary.payslips.length > 0 && (
-            <>
-              <div style={{ paddingTop: '2rem' }}>
+          {/* Intestazione stampa */}
+          <div className="print-only px-6 pt-6 pb-2">
+            <h1 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+              Riepilogo buste paga {selectedYear}
+            </h1>
+            <p style={{ fontSize: 12, color: '#64748b' }}>
+              Generato il {new Date().toLocaleDateString('it-IT')}
+            </p>
+          </div>
+
+          <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
+
+            {summary.payslips.length === 0 && (
+              <div className="card p-12 flex flex-col items-center gap-4 anim-fade text-center">
+                <p className="text-slate-500 text-sm">Nessuna busta paga per il {selectedYear}.</p>
+                <Link href="/payslips/upload" className="btn-primary px-4 py-2.5 text-sm mt-2 no-print">
+                  Carica busta paga
+                </Link>
+              </div>
+            )}
+
+            {summary.payslips.length > 0 && (
+              <>
                 {/* Alert mesi mancanti */}
                 {!summary.isComplete && (
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--accent)', marginBottom: '1.5rem' }}>
-                    ⚠ Totale parziale — mancano {summary.monthsMissing.length}{' '}
-                    {summary.monthsMissing.length === 1 ? 'mese' : 'mesi'}
-                    {': '}
-                    {summary.monthsMissing.map(m => monthName(m)).join(', ')}
-                  </p>
-                )}
-                {summary.isComplete && (
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--positive)', marginBottom: '1.5rem' }}>
-                    ✓ Anno completo — {summary.monthsPresent.length} buste paga caricate.
-                  </p>
-                )}
-              </div>
-
-              {/* Totali hero */}
-              <div style={{ display: 'flex', gap: '2.5rem', marginBottom: '1.5rem' }}>
-                <div>
-                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '0.25rem' }}>
-                    Totale lordo {!summary.isComplete && <span style={{ color: 'var(--accent)' }}>(parziale)</span>}
-                  </p>
-                  <p className="tabular-nums" style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-1)' }}>
-                    {fmt(summary.totalGross)}
-                  </p>
-                </div>
-                <div>
-                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '0.25rem' }}>Totale netto</p>
-                  <p className="tabular-nums" style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--positive)' }}>
-                    {fmt(summary.totalNet)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Dettagli totali */}
-              {[
-                { label: 'Totale IRPEF trattenuta',      value: summary.totalIrpef,               color: 'var(--negative)' },
-                { label: 'Totale contributi INPS',       value: summary.totalInps,                color: 'var(--negative)' },
-                { label: 'Totale addizionali reg./com.', value: summary.totalRegionalMunicipalTax, color: 'var(--negative)' },
-                { label: 'Totale straordinari',          value: summary.totalOvertime,            color: 'var(--positive)' },
-                { label: 'Totale buoni pasto',           value: summary.totalMealVouchers,        color: 'var(--positive)' },
-              ]
-                .filter(r => r.value > 0)
-                .map(row => (
-                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '0.875rem', color: 'var(--text-2)' }}>{row.label}</span>
-                    <span className="tabular-nums" style={{ fontSize: '0.875rem', color: row.color, fontWeight: 500 }}>
-                      {fmt(row.value)}
-                    </span>
+                  <div
+                    className="rounded-xl px-4 py-3 flex items-start gap-3 anim-slide-up anim-d1"
+                    style={{ background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.2)' }}
+                  >
+                    <AlertTriangle size={14} className="text-amber-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-amber-400 mb-1">
+                        Totale parziale — mancano {summary.monthsMissing.length}{' '}
+                        {summary.monthsMissing.length === 1 ? 'mese' : 'mesi'}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        Non caricati: {summary.monthsMissing.map(m => monthName(m)).join(', ')}
+                      </p>
+                    </div>
                   </div>
-                ))}
+                )}
 
-              {/* Dettaglio mensile */}
-              <section style={{ paddingTop: '2rem' }}>
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
-                    Dettaglio mensile
+                {summary.isComplete && (
+                  <div
+                    className="rounded-xl px-4 py-3 flex items-center gap-2.5 anim-slide-up anim-d1"
+                    style={{ background: 'rgba(52,211,153,0.07)', border: '1px solid rgba(52,211,153,0.18)' }}
+                  >
+                    <CheckCircle size={14} className="text-emerald-400" />
+                    <p className="text-xs text-emerald-400">
+                      Anno completo — {summary.monthsPresent.length} buste paga caricate.
+                    </p>
+                  </div>
+                )}
+
+                {/* Totali */}
+                <div className="card p-5 anim-slide-up anim-d2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
+                    Totali {selectedYear}
+                    {!summary.isComplete && (
+                      <span className="ml-2 text-amber-500 normal-case font-normal">(parziale)</span>
+                    )}
                   </p>
+                  <div className="grid grid-cols-2 gap-4 mb-5">
+                    <div
+                      className="rounded-xl p-4"
+                      style={{ background: 'var(--dark-700)', border: '1px solid var(--dark-600)' }}
+                    >
+                      <p className="text-[10px] text-slate-600 mb-1">Totale lordo</p>
+                      <p className="text-xl font-bold text-slate-100 tabular-nums">{fmt(summary.totalGross)}</p>
+                    </div>
+                    <div
+                      className="rounded-xl p-4"
+                      style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)' }}
+                    >
+                      <p className="text-[10px] text-slate-600 mb-1">Totale netto</p>
+                      <p className="text-xl font-bold text-emerald-400 tabular-nums">{fmt(summary.totalNet)}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-0">
+                    {[
+                      { label: 'Totale IRPEF trattenuta', value: summary.totalIrpef, color: '#f87171' },
+                      { label: 'Totale contributi INPS', value: summary.totalInps, color: '#fb923c' },
+                      { label: 'Totale addizionali reg./com.', value: summary.totalRegionalMunicipalTax, color: '#facc15' },
+                      { label: 'Totale straordinari', value: summary.totalOvertime, color: '#38bdf8' },
+                      { label: 'Totale buoni pasto', value: summary.totalMealVouchers, color: '#38bdf8' },
+                    ]
+                      .filter(r => r.value > 0)
+                      .map(row => (
+                        <div
+                          key={row.label}
+                          className="flex items-center justify-between py-1.5"
+                          style={{ borderBottom: '1px solid var(--dark-700)' }}
+                        >
+                          <span className="text-xs text-slate-400">{row.label}</span>
+                          <span className="text-xs font-semibold tabular-nums" style={{ color: row.color }}>
+                            {fmt(row.value)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
 
-                  {/* Header colonne */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '80px 1fr 1fr 1fr 1fr',
-                    gap: '0.5rem',
-                    paddingBottom: '0.5rem',
-                    borderBottom: '1px solid var(--border)',
-                  }}>
-                    {['Mese','Lordo','Netto','IRPEF','INPS'].map((h, i) => (
-                      <span key={h} style={{ fontSize: '0.6875rem', color: 'var(--text-3)', textAlign: i > 0 ? 'right' : 'left' }}>
-                        {h}
-                      </span>
-                    ))}
+                {/* Dettaglio mensile */}
+                <div className="card overflow-hidden anim-slide-up anim-d3">
+                  <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--dark-600)' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                      Dettaglio mensile
+                    </p>
+                  </div>
+                  <div
+                    className="grid px-5 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600"
+                    style={{
+                      gridTemplateColumns: '100px 1fr 1fr 1fr 1fr',
+                      gap: '0.75rem',
+                      borderBottom: '1px solid var(--dark-700)',
+                    }}
+                  >
+                    <span>Mese</span>
+                    <span className="text-right">Lordo</span>
+                    <span className="text-right">Netto</span>
+                    <span className="text-right">IRPEF</span>
+                    <span className="text-right">INPS</span>
                   </div>
 
                   {summary.payslips.map(p => {
@@ -205,25 +224,24 @@ export default async function AnnualePage({
                     return (
                       <div
                         key={p.id}
+                        className="grid px-5 py-2.5"
                         style={{
-                          display: 'grid',
-                          gridTemplateColumns: '80px 1fr 1fr 1fr 1fr',
-                          gap: '0.5rem',
-                          padding: '0.5rem 0',
-                          borderBottom: '1px solid var(--border)',
+                          gridTemplateColumns: '100px 1fr 1fr 1fr 1fr',
+                          gap: '0.75rem',
+                          borderBottom: '1px solid var(--dark-700)',
                         }}
                       >
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-2)' }}>{MONTH_SHORT[monthIdx]}</span>
-                        <span className="tabular-nums" style={{ fontSize: '0.8125rem', color: 'var(--text-1)', textAlign: 'right' }}>
+                        <span className="text-xs text-slate-400">{MONTH_SHORT[monthIdx]}</span>
+                        <span className="text-xs text-slate-300 text-right tabular-nums">
                           {fmt(Number(p.gross_amount))}
                         </span>
-                        <span className="tabular-nums" style={{ fontSize: '0.8125rem', color: 'var(--positive)', textAlign: 'right' }}>
+                        <span className="text-xs text-emerald-400 text-right tabular-nums">
                           {fmt(Number(p.net_amount))}
                         </span>
-                        <span className="tabular-nums" style={{ fontSize: '0.8125rem', color: 'var(--negative)', textAlign: 'right' }}>
+                        <span className="text-xs text-red-400 text-right tabular-nums">
                           {Number(p.irpef) > 0 ? fmt(Number(p.irpef)) : '—'}
                         </span>
-                        <span className="tabular-nums" style={{ fontSize: '0.8125rem', color: 'var(--negative)', textAlign: 'right' }}>
+                        <span className="text-xs text-orange-400 text-right tabular-nums">
                           {Number(p.inps_contributions) > 0 ? fmt(Number(p.inps_contributions)) : '—'}
                         </span>
                       </div>
@@ -233,53 +251,57 @@ export default async function AnnualePage({
                   {summary.monthsMissing.map(m => (
                     <div
                       key={m}
+                      className="grid px-5 py-2.5 opacity-30"
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: '80px 1fr 1fr 1fr 1fr',
-                        gap: '0.5rem',
-                        padding: '0.5rem 0',
-                        borderBottom: '1px solid var(--border)',
-                        opacity: 0.35,
+                        gridTemplateColumns: '100px 1fr 1fr 1fr 1fr',
+                        gap: '0.75rem',
+                        borderBottom: '1px solid var(--dark-700)',
                       }}
                     >
-                      <span style={{ fontSize: '0.8125rem', color: 'var(--text-3)' }}>{MONTH_SHORT[m - 1]}</span>
-                      <span style={{ fontSize: '0.8125rem', color: 'var(--text-3)', textAlign: 'right', gridColumn: '2 / -1' }}>
-                        non caricata
-                      </span>
+                      <span className="text-xs text-slate-600">{MONTH_SHORT[m - 1]}</span>
+                      <span className="text-xs text-slate-700 text-right col-span-4">non caricata</span>
                     </div>
                   ))}
 
-                  {/* Totale */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '80px 1fr 1fr 1fr 1fr',
-                    gap: '0.5rem',
-                    padding: '0.625rem 0',
-                  }}>
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--accent)', fontWeight: 600 }}>Totale</span>
-                    <span className="tabular-nums" style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-1)', textAlign: 'right' }}>
+                  <div
+                    className="grid px-5 py-3.5"
+                    style={{
+                      gridTemplateColumns: '100px 1fr 1fr 1fr 1fr',
+                      gap: '0.75rem',
+                      borderTop: '1px solid var(--dark-600)',
+                      background: 'rgba(255,255,255,0.01)',
+                    }}
+                  >
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-widest"
+                      style={{ color: 'var(--brand-400)' }}
+                    >
+                      Totale
+                    </span>
+                    <span className="text-sm font-bold text-slate-100 text-right tabular-nums">
                       {fmt(summary.totalGross)}
                     </span>
-                    <span className="tabular-nums" style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--positive)', textAlign: 'right' }}>
+                    <span className="text-sm font-bold text-emerald-400 text-right tabular-nums">
                       {fmt(summary.totalNet)}
                     </span>
-                    <span className="tabular-nums" style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--negative)', textAlign: 'right' }}>
+                    <span className="text-sm font-bold text-red-400 text-right tabular-nums">
                       {summary.totalIrpef > 0 ? fmt(summary.totalIrpef) : '—'}
                     </span>
-                    <span className="tabular-nums" style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--negative)', textAlign: 'right' }}>
+                    <span className="text-sm font-bold text-orange-400 text-right tabular-nums">
                       {summary.totalInps > 0 ? fmt(summary.totalInps) : '—'}
                     </span>
                   </div>
                 </div>
-              </section>
 
-              <p className="print-only" style={{ display: 'none', marginTop: '1rem', fontSize: '0.6875rem', color: '#64748b' }}>
-                Documento generato da Nucleo — riepilogo a scopo informativo.
-                {!summary.isComplete && ` Dati parziali: mancano ${summary.monthsMissing.map(m => monthName(m)).join(', ')}.`}
-              </p>
-            </>
-          )}
-        </main>
+                <p className="print-only text-[10px] text-slate-700 mt-2" style={{ display: 'none' }}>
+                  Documento generato da Nucleo — riepilogo a scopo informativo.
+                  {!summary.isComplete &&
+                    ` Dati parziali: mancano ${summary.monthsMissing.map(m => monthName(m)).join(', ')}.`}
+                </p>
+              </>
+            )}
+          </main>
+        </div>
       </div>
     </>
   );
