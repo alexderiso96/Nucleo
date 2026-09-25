@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Check, Trash2, X, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Trash2, Check, X, Loader2, AlertTriangle } from 'lucide-react';
 import { CATEGORIES } from '@/lib/categories';
 
 interface Expense {
@@ -20,25 +20,6 @@ interface Props {
   monthLabel: string;
 }
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
-
-function categoryIcon(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.icon ?? '📦';
-}
-
-function categoryLabel(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.label ?? value;
-}
-
-function categoryDarkBg(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.darkBg ?? 'rgba(100,116,139,0.14)';
-}
-
-function categoryDarkText(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.darkText ?? '#64748b';
-}
-
 interface DayGroup {
   dateKey: string;
   label: string;
@@ -46,353 +27,219 @@ interface DayGroup {
   items: Expense[];
 }
 
-function buildGroups(expenses: Expense[]): DayGroup[] {
-  const todayStr = new Date().toISOString().split('T')[0];
-  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+const CATEGORY_DOTS: Record<string, string> = {
+  alimentari:      '#6FA287',
+  ristoranti:      '#C9A227',
+  trasporti:       '#5B8BB0',
+  casa:            '#B07E59',
+  salute:          '#C1666B',
+  sport:           '#4BA09A',
+  abbigliamento:   '#9485C8',
+  intrattenimento: '#BE7A9A',
+  utenze:          '#7A9090',
+  altro:           '#5A6B67',
+};
 
+const fmt = (n: number) =>
+  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
+
+function getCategoryDot(category: string): string {
+  return CATEGORY_DOTS[category] ?? '#5A6B67';
+}
+
+function getCategoryLabel(category: string): string {
+  return CATEGORIES.find(c => c.value === category)?.label ?? category;
+}
+
+function buildGroups(expenses: Expense[]): DayGroup[] {
   const map = new Map<string, Expense[]>();
   for (const e of expenses) {
     if (!map.has(e.expense_date)) map.set(e.expense_date, []);
     map.get(e.expense_date)!.push(e);
   }
-
-  return [...map.entries()]
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([key, items]) => {
-      let label: string;
-      if (key === todayStr) label = 'Oggi';
-      else if (key === yesterdayStr) label = 'Ieri';
-      else {
-        const [y, m, d] = key.split('-').map(Number);
-        label = new Date(y, m - 1, d).toLocaleDateString('it-IT', {
-          weekday: 'short', day: 'numeric', month: 'short',
-        });
-      }
-      return {
-        dateKey: key,
-        label,
-        dayTotal: items.reduce((s, e) => s + Number(e.amount), 0),
-        items,
-      };
+  return [...map.entries()].map(([key, items]) => {
+    const [y, m, d] = key.split('-').map(Number);
+    const label = new Date(y, m - 1, d).toLocaleDateString('it-IT', {
+      weekday: 'long', day: 'numeric', month: 'long',
     });
-}
-
-interface RowState {
-  category: string;
-  confidence: string | null;
-  saved: boolean;
-  deleted: boolean;
+    return {
+      dateKey: key,
+      label,
+      dayTotal: items.reduce((s, e) => s + Number(e.amount), 0),
+      items,
+    };
+  });
 }
 
 export default function AnimatedExpenseList({ expenses, monthLabel }: Props) {
-  const [rows, setRows] = useState<Record<string, RowState>>(() => {
-    const init: Record<string, RowState> = {};
-    for (const e of expenses) {
-      init[e.id] = {
-        category: e.category,
-        confidence: e.category_confidence ?? null,
-        saved: false,
-        deleted: false,
-      };
-    }
-    return init;
-  });
-  const [editing, setEditing] = useState<string | null>(null);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [deleted, setDeleted] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const savedTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  async function handleCategoryChange(expense: Expense, newCategory: string) {
-    setEditing(null);
-    setSaving(expense.id);
-    try {
-      await fetch(`/api/expenses/${expense.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: newCategory }),
-      });
-      if (expense.description) {
-        await fetch('/api/merchant-rules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: expense.description, category: newCategory }),
-        });
-      }
-      setRows(prev => ({
-        ...prev,
-        [expense.id]: { ...prev[expense.id], category: newCategory, confidence: 'high', saved: true },
-      }));
-      clearTimeout(savedTimers.current[expense.id]);
-      savedTimers.current[expense.id] = setTimeout(() => {
-        setRows(prev => ({ ...prev, [expense.id]: { ...prev[expense.id], saved: false } }));
-      }, 1500);
-    } catch { /* ignore */ } finally { setSaving(null); }
-  }
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   async function handleDelete(id: string) {
     setDeleting(id);
     setConfirmDelete(null);
     try {
       await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
-      setRows(prev => ({ ...prev, [id]: { ...prev[id], deleted: true } }));
-    } catch { /* ignore */ } finally { setDeleting(null); }
+      setDeleted(prev => new Set([...prev, id]));
+    } catch { /* ignore */ } finally {
+      setDeleting(null);
+    }
   }
 
-  const notDeleted = expenses.filter(e => !rows[e.id]?.deleted);
-
-  const visible = notDeleted.filter(e =>
-    categoryFilter === 'all' || (rows[e.id]?.category ?? e.category) === categoryFilter,
-  );
-
+  const visible = expenses.filter(e => !deleted.has(e.id));
   const groups = buildGroups(visible);
-  const total = visible.reduce((s, e) => s + Number(e.amount), 0);
 
-  const usedCategories = CATEGORIES.filter(c =>
-    notDeleted.some(e => (rows[e.id]?.category ?? e.category) === c.value),
-  );
+  if (visible.length === 0) {
+    return (
+      <div style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
+        <p style={{
+          color: 'var(--text-3)', fontSize: '0.875rem',
+          borderTop: '1px solid var(--border)', paddingTop: '1.5rem',
+        }}>
+          Nessuna transazione in {monthLabel}.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="card anim-slide-up anim-d4 overflow-hidden">
+    <div>
+      {/* Header sezione */}
+      <div style={{
+        borderTop: '1px solid var(--border)',
+        paddingTop: '1.5rem',
+        paddingBottom: '1rem',
+      }}>
+        <span style={{ color: 'var(--text-3)', fontSize: '0.8125rem' }}>
+          {visible.length} {visible.length === 1 ? 'transazione' : 'transazioni'} in {monthLabel}
+        </span>
+      </div>
 
-      {/* Header + filtri */}
-      <div className="px-4 py-3 flex flex-col gap-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
-            Spese di {monthLabel}
-          </span>
-          <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-            {visible.length} di {notDeleted.length}
-          </span>
-        </div>
+      {/* Gruppi per giorno */}
+      {groups.map(group => (
+        <div key={group.dateKey} style={{ marginBottom: '2rem' }}>
 
-        {/* Pill filter bar */}
-        <div
-          className="flex gap-1.5 overflow-x-auto pb-0.5"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          <button
-            onClick={() => setCategoryFilter('all')}
-            className="shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold transition-all"
-            style={
-              categoryFilter === 'all'
-                ? { background: 'var(--brand)', color: '#fff' }
-                : { background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border-strong)' }
-            }
-          >
-            Tutte
-          </button>
+          {/* Intestazione giorno */}
+          <div style={{
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            paddingBottom: '0.5rem',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            <span style={{
+              color: 'var(--text-2)', fontSize: '0.8125rem', fontWeight: 500,
+              textTransform: 'capitalize',
+            }}>
+              {group.label}
+            </span>
+            <span className="tabular-nums" style={{ color: 'var(--text-3)', fontSize: '0.8125rem' }}>
+              −{fmt(group.dayTotal)}
+            </span>
+          </div>
 
-          {usedCategories.map(cat => {
-            const active = categoryFilter === cat.value;
+          {/* Righe */}
+          {group.items.map(expense => {
+            const isDeleting = deleting === expense.id;
+            const isConfirming = confirmDelete === expense.id;
+            const isHovered = hoveredRow === expense.id;
+            const isLowConf = expense.category_confidence === 'low';
+            const dot = getCategoryDot(expense.category);
+            const catLabel = getCategoryLabel(expense.category);
+
             return (
-              <button
-                key={cat.value}
-                onClick={() => setCategoryFilter(active ? 'all' : cat.value)}
-                className="shrink-0 flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-semibold transition-all"
-                style={
-                  active
-                    ? { background: cat.darkBg, color: cat.darkText, border: `1px solid ${cat.darkText}40` }
-                    : { background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border-strong)' }
-                }
+              <div
+                key={expense.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.625rem 0',
+                  borderBottom: '1px solid var(--border)',
+                  opacity: isDeleting ? 0.4 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
+                onMouseEnter={() => setHoveredRow(expense.id)}
+                onMouseLeave={() => setHoveredRow(null)}
               >
-                <span style={{ fontSize: '0.7rem' }}>{cat.icon}</span>
-                {cat.label}
-              </button>
+                {/* Pallino categoria */}
+                <span style={{
+                  display: 'inline-block', width: 8, height: 8,
+                  borderRadius: '50%', background: dot, flexShrink: 0,
+                }} />
+
+                {/* Descrizione + categoria */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
+                    <span style={{
+                      color: 'var(--text-1)', fontSize: '0.9375rem',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {expense.description ?? catLabel}
+                    </span>
+                    {isLowConf && (
+                      <span title="Categoria incerta" style={{ lineHeight: 1, flexShrink: 0, display: 'inline-flex' }}>
+                        <AlertTriangle size={11} style={{ color: 'var(--accent)' }} />
+                      </span>
+                    )}
+                  </div>
+                  {expense.description && (
+                    <div style={{ color: 'var(--text-3)', fontSize: '0.75rem', marginTop: '0.1rem' }}>
+                      {catLabel}
+                    </div>
+                  )}
+                </div>
+
+                {/* Importo */}
+                <span
+                  className="tabular-nums"
+                  style={{ color: 'var(--negative)', fontSize: '0.9375rem', fontWeight: 500, flexShrink: 0 }}
+                >
+                  −{fmt(Number(expense.amount))}
+                </span>
+
+                {/* Azioni delete */}
+                <div style={{ width: '3.5rem', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+                  {isDeleting ? (
+                    <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-3)' }} />
+                  ) : isConfirming ? (
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      <button
+                        onClick={() => handleDelete(expense.id)}
+                        title="Conferma"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--negative)', padding: 0, lineHeight: 1 }}
+                      >
+                        <Check size={13} />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(null)}
+                        title="Annulla"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 0, lineHeight: 1 }}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ) : isHovered ? (
+                    <button
+                      onClick={() => setConfirmDelete(expense.id)}
+                      title="Elimina"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--text-3)', padding: 0, lineHeight: 1,
+                        transition: 'color 0.15s ease',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget).style.color = 'var(--negative)'; }}
+                      onMouseLeave={e => { (e.currentTarget).style.color = 'var(--text-3)'; }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  ) : (
+                    <div style={{ width: 13 }} />
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
-      </div>
-
-      {/* Lista */}
-      {visible.length === 0 ? (
-        <div className="px-5 py-12 text-center text-sm" style={{ color: 'var(--text-3)' }}>
-          {notDeleted.length === 0
-            ? 'Nessuna spesa questo mese.'
-            : 'Nessuna spesa per questa categoria.'}
-        </div>
-      ) : (
-        <>
-          {groups.map(group => (
-            <div key={group.dateKey}>
-              {/* Intestazione giorno */}
-              <div
-                className="flex items-center justify-between px-4 py-2"
-                style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}
-              >
-                <span
-                  className="text-[11px] font-semibold capitalize"
-                  style={{ color: 'var(--text-2)' }}
-                >
-                  {group.label}
-                </span>
-                <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-                  {fmt(group.dayTotal)}
-                </span>
-              </div>
-
-              {/* Righe */}
-              {group.items.map(expense => {
-                const row = rows[expense.id] ?? {
-                  category: expense.category,
-                  confidence: null,
-                  saved: false,
-                  deleted: false,
-                };
-                const isSaving = saving === expense.id;
-                const isDeleting = deleting === expense.id;
-                const isConfirming = confirmDelete === expense.id;
-                const isEditing = editing === expense.id;
-                const isLowConf = row.confidence === 'low';
-                const catBg = categoryDarkBg(row.category);
-                const catText = categoryDarkText(row.category);
-                const label = categoryLabel(row.category);
-                const icon = categoryIcon(row.category);
-
-                return (
-                  <div
-                    key={expense.id}
-                    className="flex items-center gap-3 px-4 py-3 group transition-colors"
-                    style={{ borderBottom: '1px solid var(--border)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {/* Icona categoria */}
-                    <div
-                      className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0 text-base"
-                      style={{ background: catBg }}
-                    >
-                      {icon}
-                    </div>
-
-                    {/* Testo */}
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="text-sm truncate"
-                        style={{ color: 'var(--text-1)' }}
-                        title={expense.description ?? label}
-                      >
-                        {expense.description ?? (
-                          <span style={{ color: 'var(--text-3)' }}>{label}</span>
-                        )}
-                      </p>
-
-                      {/* Badge categoria */}
-                      {isEditing ? (
-                        <select
-                          autoFocus
-                          className="input text-[10px] px-2 py-0.5 rounded-full mt-0.5"
-                          style={{ appearance: 'none', colorScheme: 'dark', minWidth: 120 }}
-                          defaultValue={row.category}
-                          onChange={e => handleCategoryChange(expense, e.target.value)}
-                          onBlur={() => setEditing(null)}
-                        >
-                          {CATEGORIES.map(c => (
-                            <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <button
-                          onClick={() => setEditing(expense.id)}
-                          title={isLowConf ? 'Categoria incerta — clicca per correggere' : 'Cambia categoria'}
-                          className="flex items-center gap-1 mt-0.5"
-                        >
-                          {isSaving ? (
-                            <Loader2 size={10} className="animate-spin" style={{ color: 'var(--text-3)' }} />
-                          ) : row.saved ? (
-                            <Check size={10} style={{ color: 'var(--income)' }} />
-                          ) : null}
-
-                          <span
-                            className="badge text-[10px]"
-                            style={
-                              isLowConf
-                                ? {
-                                    background: 'rgba(251,191,36,0.12)',
-                                    color: 'var(--warning)',
-                                    border: '1px solid rgba(251,191,36,0.25)',
-                                  }
-                                : { background: catBg, color: catText }
-                            }
-                          >
-                            {isLowConf && (
-                              <span
-                                className="w-1.5 h-1.5 rounded-full inline-block"
-                                style={{ background: 'var(--warning)' }}
-                              />
-                            )}
-                            {label}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Importo */}
-                    <span
-                      className="text-sm font-semibold tabular-nums shrink-0"
-                      style={{ color: 'var(--expense)' }}
-                    >
-                      {fmt(Number(expense.amount))}
-                    </span>
-
-                    {/* Delete */}
-                    <div className="w-7 flex items-center justify-center shrink-0">
-                      {isDeleting ? (
-                        <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-3)' }} />
-                      ) : isConfirming ? (
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleDelete(expense.id)}
-                            className="w-5 h-5 flex items-center justify-center rounded transition-colors"
-                            style={{ color: 'var(--expense)' }}
-                            title="Conferma"
-                          >
-                            <Check size={11} />
-                          </button>
-                          <button
-                            onClick={() => setConfirmDelete(null)}
-                            className="w-5 h-5 flex items-center justify-center rounded transition-colors"
-                            style={{ color: 'var(--text-3)' }}
-                            title="Annulla"
-                          >
-                            <X size={11} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmDelete(expense.id)}
-                          className="w-6 h-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ color: 'var(--text-3)' }}
-                          title="Elimina spesa"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-
-          {/* Totale */}
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderTop: '1px solid var(--border-strong)', background: 'var(--surface-2)' }}
-          >
-            <span
-              className="text-[11px] font-semibold uppercase tracking-widest"
-              style={{ color: 'var(--text-3)' }}
-            >
-              Totale {monthLabel}
-            </span>
-            <span className="text-base font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
-              {fmt(total)}
-            </span>
-          </div>
-        </>
-      )}
+      ))}
     </div>
   );
 }

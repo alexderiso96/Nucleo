@@ -2,11 +2,13 @@
 
 import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Upload, FileText, CheckCircle, AlertTriangle, Loader2,
-  ChevronRight, RotateCcw, ArrowLeft,
+  FileText, CheckCircle, AlertTriangle, Loader2,
+  ChevronLeft, RotateCcw,
 } from 'lucide-react';
+import { createClient } from '@/lib/supabaseClient';
 import type { PayslipFields, ValidationResult } from '@/lib/payslip-parser';
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
@@ -84,7 +86,7 @@ function clientValidate(form: FormState): ValidationResult {
   return { valid: warnings.length === 0, warnings };
 }
 
-// ── Componenti UI ─────────────────────────────────────────────────────────────
+// ── Campo con underline ───────────────────────────────────────────────────────
 
 function Field({
   label, name, value, onChange, type = 'text', placeholder,
@@ -97,16 +99,17 @@ function Field({
   placeholder?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <label style={{ fontSize: '0.6875rem', color: 'var(--text-3)', fontWeight: 500 }}>
         {label}
       </label>
       <input
         type={type}
-        className="input px-3 py-2 text-sm"
+        className="field"
         value={value}
         placeholder={placeholder}
         onChange={e => onChange(name, e.target.value)}
+        style={{ colorScheme: 'dark', fontSize: '0.875rem' }}
       />
     </div>
   );
@@ -126,36 +129,36 @@ function UploadStep({ onFile }: { onFile: (f: File) => void }) {
   }, [onFile]);
 
   return (
-    <div className="flex flex-col items-center gap-8">
-      <div>
-        <h1 className="text-xl font-bold text-slate-100 text-center">Carica busta paga</h1>
-        <p className="text-xs text-slate-500 text-center mt-1">
-          Carica un PDF — il testo verrà estratto automaticamente
-        </p>
-      </div>
-
+    <div style={{ paddingTop: '3rem' }}>
+      <p style={{ fontSize: '0.875rem', color: 'var(--text-2)', marginBottom: '2rem' }}>
+        Carica un PDF — il testo verrà estratto automaticamente.
+      </p>
       <div
-        className={`w-full max-w-md border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-4 py-14 px-6 cursor-pointer transition-colors ${dragging ? 'border-emerald-400 bg-emerald-500/5' : 'border-slate-700 hover:border-slate-500'}`}
+        onClick={() => inputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
+        style={{
+          border: `1px dashed ${dragging ? 'var(--accent)' : 'var(--border-strong)'}`,
+          borderRadius: '0.375rem',
+          padding: '3.5rem 2rem',
+          textAlign: 'center',
+          cursor: 'pointer',
+          background: dragging ? 'rgba(201,162,39,0.04)' : 'transparent',
+          transition: 'border-color 0.15s ease, background 0.15s ease',
+        }}
       >
-        <div
-          className="w-14 h-14 rounded-full flex items-center justify-center"
-          style={{ background: 'var(--brand-dim)' }}
-        >
-          <Upload size={24} style={{ color: 'var(--brand-400)' }} />
-        </div>
-        <div className="text-center">
-          <p className="text-sm font-medium text-slate-300">Trascina qui il PDF</p>
-          <p className="text-xs text-slate-600 mt-0.5">oppure clicca per sfogliare</p>
-        </div>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-2)', marginBottom: '0.375rem' }}>
+          Trascina il PDF della busta paga qui
+        </p>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)' }}>
+          oppure clicca per sfogliare
+        </p>
         <input
           ref={inputRef}
           type="file"
           accept=".pdf,application/pdf"
-          className="hidden"
+          style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); }}
         />
       </div>
@@ -179,95 +182,116 @@ function ReviewStep({
   const validation = clientValidate(form);
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-2xl mx-auto">
-      <div className="flex items-start justify-between gap-4">
+    <div style={{ paddingTop: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      {/* Intestazione */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
         <div>
-          <h1 className="text-xl font-bold text-slate-100">Verifica i dati</h1>
-          <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
-            <FileText size={11} />
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-1)', fontWeight: 600, marginBottom: '0.25rem' }}>
+            Verifica i dati
+          </p>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+            <FileText size={12} />
             {fileName}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem', flexShrink: 0 }}>
           {confidence === 'high' ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400">
-              <CheckCircle size={11} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--positive)' }}>
+              <CheckCircle size={12} />
               Estrazione riuscita
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400">
-              <AlertTriangle size={11} />
-              Inserimento manuale
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--accent)' }}>
+              <AlertTriangle size={12} />
+              Verifica i campi
             </span>
           )}
           <button
             onClick={onReset}
-            className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer' }}
           >
             <RotateCcw size={11} />
-            Ricarica altro file
+            Altro file
           </button>
         </div>
       </div>
 
+      {/* Avvertenze validazione */}
       {validation.warnings.length > 0 && (
-        <div
-          className="flex flex-col gap-1 px-4 py-3 rounded-lg"
-          style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
-        >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
           {validation.warnings.map((w, i) => (
-            <p key={i} className="text-xs text-amber-400 flex items-start gap-2">
-              <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            <p key={i} style={{ fontSize: '0.8125rem', color: 'var(--accent)', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <AlertTriangle size={12} style={{ marginTop: 2, flexShrink: 0 }} />
               {w}
             </p>
           ))}
         </div>
       )}
 
-      <div className="card p-5 flex flex-col gap-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--brand-400)' }}>
+      {/* Sezione generale */}
+      <section>
+        <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '1.25rem' }}>
           Informazioni generali
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
           <Field label="Periodo" name="periodMonth" value={form.periodMonth} onChange={onChange} type="month" />
           <Field label="Datore di lavoro" name="employerName" value={form.employerName} onChange={onChange} placeholder="es. Accenture S.p.A." />
         </div>
-      </div>
+      </section>
 
-      <div className="card p-5 flex flex-col gap-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--brand-400)' }}>
+      {/* Divider */}
+      <div style={{ borderTop: '1px solid var(--border)' }} />
+
+      {/* Importi principali */}
+      <section>
+        <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '1.25rem' }}>
           Importi principali
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
           <Field label="Lordo (€)" name="grossAmount" value={form.grossAmount} onChange={onChange} placeholder="es. 2800" />
           <Field label="Netto (€)" name="netAmount" value={form.netAmount} onChange={onChange} placeholder="es. 1950" />
           <Field label="IRPEF (€)" name="irpef" value={form.irpef} onChange={onChange} placeholder="es. 560" />
           <Field label="Contributi INPS (€)" name="inpsContributions" value={form.inpsContributions} onChange={onChange} placeholder="es. 240" />
-          <Field label="Add. regionale/comunale (€)" name="regionalMunicipalTax" value={form.regionalMunicipalTax} onChange={onChange} placeholder="es. 50" />
+          <Field label="Addizionale reg./com. (€)" name="regionalMunicipalTax" value={form.regionalMunicipalTax} onChange={onChange} placeholder="es. 50" />
         </div>
-      </div>
+      </section>
 
-      <div className="card p-5 flex flex-col gap-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--brand-400)' }}>
+      {/* Divider */}
+      <div style={{ borderTop: '1px solid var(--border)' }} />
+
+      {/* Voci aggiuntive */}
+      <section>
+        <p style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginBottom: '1.25rem' }}>
           Voci aggiuntive
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
           <Field label="Ore straordinario" name="overtimeHours" value={form.overtimeHours} onChange={onChange} placeholder="es. 8" />
           <Field label="Compenso straordinario (€)" name="overtimeAmount" value={form.overtimeAmount} onChange={onChange} placeholder="es. 120" />
           <Field label="Buoni pasto (€)" name="mealVouchers" value={form.mealVouchers} onChange={onChange} placeholder="es. 132" />
           <Field label="TFR maturato periodo (€)" name="tfrAccruedPeriod" value={form.tfrAccruedPeriod} onChange={onChange} placeholder="es. 180" />
           <Field label="TFR totale accantonato (€)" name="tfrTotal" value={form.tfrTotal} onChange={onChange} placeholder="es. 3600" />
         </div>
-      </div>
+      </section>
 
       <button
         onClick={onSave}
         disabled={!form.periodMonth}
-        className="btn-primary flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-sm"
-        style={{ opacity: !form.periodMonth ? 0.4 : 1 }}
+        style={{
+          fontSize: '0.875rem',
+          fontWeight: 600,
+          color: form.periodMonth ? 'var(--accent)' : 'var(--text-3)',
+          border: `1px solid ${form.periodMonth ? 'var(--accent)' : 'var(--border)'}`,
+          background: 'transparent',
+          borderRadius: '0.25rem',
+          padding: '0.625rem 1.5rem',
+          cursor: form.periodMonth ? 'pointer' : 'not-allowed',
+          transition: 'background 0.15s ease',
+          alignSelf: 'flex-start',
+        }}
+        onMouseEnter={e => { if (form.periodMonth) { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.color = '#0e1512'; } }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = form.periodMonth ? 'var(--accent)' : 'var(--text-3)'; }}
       >
         Salva busta paga
-        <ChevronRight size={16} />
       </button>
     </div>
   );
@@ -277,36 +301,50 @@ function ReviewStep({
 
 function SavingStep() {
   return (
-    <div className="flex flex-col items-center gap-4">
-      <Loader2 size={40} className="animate-spin" style={{ color: 'var(--brand-400)' }} />
-      <p className="text-sm text-slate-400">Salvataggio in corso…</p>
+    <div style={{ paddingTop: '4rem', textAlign: 'center' }}>
+      <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)', margin: '0 auto 1rem' }} />
+      <p style={{ fontSize: '0.875rem', color: 'var(--text-2)' }}>Salvataggio in corso…</p>
     </div>
   );
 }
 
 function DoneStep({ onReset }: { onReset: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-6">
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: 'spring', duration: 0.5 }}
-        className="w-16 h-16 rounded-full flex items-center justify-center"
-        style={{ background: 'rgba(16,185,129,0.15)' }}
-      >
-        <CheckCircle size={32} className="text-emerald-400" />
-      </motion.div>
-      <div className="text-center">
-        <h2 className="text-lg font-bold text-slate-100">Busta paga salvata</h2>
-        <p className="text-xs text-slate-500 mt-1">I dati sono stati registrati correttamente.</p>
-      </div>
-      <div className="flex gap-3">
-        <button onClick={onReset} className="btn-primary px-6 py-2 rounded-lg text-sm font-semibold">
-          Carica un&apos;altra busta paga
+    <div style={{ paddingTop: '4rem', textAlign: 'center' }}>
+      <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>✓</p>
+      <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--positive)', marginBottom: '0.25rem' }}>
+        Busta paga salvata
+      </p>
+      <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginBottom: '2rem' }}>
+        I dati sono stati registrati correttamente.
+      </p>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+        <button
+          onClick={onReset}
+          style={{
+            fontSize: '0.875rem',
+            color: 'var(--accent)',
+            border: '1px solid var(--accent)',
+            background: 'transparent',
+            borderRadius: '0.25rem',
+            padding: '0.5rem 1.25rem',
+            cursor: 'pointer',
+          }}
+        >
+          Carica un&apos;altra
         </button>
-        <Link href="/payslips" className="px-6 py-2 rounded-lg text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors"
-          style={{ border: '1px solid var(--dark-600)' }}>
-          Vai alla dashboard
+        <Link
+          href="/payslips"
+          style={{
+            fontSize: '0.875rem',
+            color: 'var(--text-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '0.25rem',
+            padding: '0.5rem 1.25rem',
+            textDecoration: 'none',
+          }}
+        >
+          Vai alle buste paga
         </Link>
       </div>
     </div>
@@ -316,6 +354,7 @@ function DoneStep({ onReset }: { onReset: () => void }) {
 // ── Wizard principale ─────────────────────────────────────────────────────────
 
 export default function PayslipsUploadPage() {
+  const router = useRouter();
   const [step, setStep] = useState<Step>('upload');
   const [fileName, setFileName] = useState('');
   const [confidence, setConfidence] = useState<'high' | 'low'>('low');
@@ -328,6 +367,12 @@ export default function PayslipsUploadPage() {
   });
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<File | null>(null);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+  }
 
   function handleChange(k: keyof FormState, v: string) {
     setForm(prev => ({ ...prev, [k]: v }));
@@ -363,8 +408,8 @@ export default function PayslipsUploadPage() {
     let storagePath: string | undefined;
     if (fileRef.current) {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
+        const { createClient: createRawClient } = await import('@supabase/supabase-js');
+        const supabase = createRawClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         );
@@ -405,53 +450,80 @@ export default function PayslipsUploadPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--dark-900)' }}>
-      <header className="flex items-center gap-3 px-6 py-3.5 sticky top-0 z-10"
-        style={{ background: 'var(--dark-800)', borderBottom: '1px solid var(--dark-600)' }}>
-        <Link href="/payslips"
-          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-          <ArrowLeft size={13} /> Buste paga
-        </Link>
-        <span className="text-slate-700">/</span>
-        <span className="text-sm font-semibold text-slate-300">Carica</span>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      {/* Header inline */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 20,
+        background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+      }}>
+        <div style={{
+          maxWidth: '42rem', margin: '0 auto', padding: '0 1.5rem',
+          height: '3.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+            <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', textDecoration: 'none', flexShrink: 0 }}>
+              <div style={{ width: '1.375rem', height: '1.375rem', borderRadius: '0.25rem', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700, color: '#0e1512' }}>N</div>
+              <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-1)' }}>Nucleo</span>
+            </Link>
+            <span style={{ color: 'var(--text-3)', fontSize: '0.875rem' }}>/</span>
+            <Link href="/payslips" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8125rem', color: 'var(--text-3)', textDecoration: 'none' }}>
+              <ChevronLeft size={12} />
+              Buste paga
+            </Link>
+            <span style={{ color: 'var(--text-3)', fontSize: '0.875rem' }}>/</span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-2)', fontWeight: 500 }}>Carica</span>
+          </div>
+          <button onClick={handleLogout} style={{ fontSize: '0.75rem', color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            Esci
+          </button>
+        </div>
+        <nav style={{ maxWidth: '42rem', margin: '0 auto', padding: '0 1.5rem', height: '2.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem', borderTop: '1px solid var(--border)' }}>
+          {[
+            { href: '/dashboard', label: 'Dashboard', active: false },
+            { href: '/import',    label: 'Importa',   active: false },
+            { href: '/payslips',  label: 'Buste paga', active: true },
+          ].map(item => (
+            <Link key={item.href} href={item.href} style={{ fontSize: '0.75rem', fontWeight: item.active ? 600 : 400, color: item.active ? 'var(--accent)' : 'var(--text-3)', padding: '0.25rem 0.5rem', textDecoration: 'none', borderBottom: item.active ? '1px solid var(--accent)' : '1px solid transparent', marginBottom: '-1px' }}>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
       </header>
 
-      <main className="flex-1 px-6 py-8 overflow-y-auto">
-        <div className="max-w-2xl mx-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.22 }}
-            >
-              {step === 'upload' && !uploading && <UploadStep onFile={handleFile} />}
+      <main style={{ maxWidth: '42rem', margin: '0 auto', padding: '0 1.5rem 4rem' }}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+          >
+            {step === 'upload' && !uploading && <UploadStep onFile={handleFile} />}
 
-              {step === 'upload' && uploading && (
-                <div className="flex flex-col items-center gap-4">
-                  <Loader2 size={40} className="animate-spin" style={{ color: 'var(--brand-400)' }} />
-                  <p className="text-sm text-slate-400">Estrazione testo in corso…</p>
-                </div>
-              )}
+            {step === 'upload' && uploading && (
+              <div style={{ paddingTop: '4rem', textAlign: 'center' }}>
+                <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)', margin: '0 auto 1rem' }} />
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-2)' }}>Estrazione testo in corso…</p>
+              </div>
+            )}
 
-              {step === 'review' && (
-                <ReviewStep
-                  form={form}
-                  confidence={confidence}
-                  warnings={warnings}
-                  fileName={fileName}
-                  onChange={handleChange}
-                  onSave={handleSave}
-                  onReset={reset}
-                />
-              )}
+            {step === 'review' && (
+              <ReviewStep
+                form={form}
+                confidence={confidence}
+                warnings={warnings}
+                fileName={fileName}
+                onChange={handleChange}
+                onSave={handleSave}
+                onReset={reset}
+              />
+            )}
 
-              {step === 'saving' && <SavingStep />}
-              {step === 'done' && <DoneStep onReset={reset} />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+            {step === 'saving' && <SavingStep />}
+            {step === 'done' && <DoneStep onReset={reset} />}
+          </motion.div>
+        </AnimatePresence>
       </main>
     </div>
   );

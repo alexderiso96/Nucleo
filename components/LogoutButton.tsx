@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabaseClient';
-import { LogOut } from 'lucide-react';
 
 export default function LogoutButton() {
   const router = useRouter();
@@ -17,10 +16,16 @@ export default function LogoutButton() {
   return (
     <button
       onClick={handleLogout}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-300 transition-colors"
-      style={{ border: '1px solid var(--dark-600)' }}
+      style={{
+        fontSize: '0.75rem',
+        color: 'var(--text-3)',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '0.25rem 0',
+        transition: 'color 0.15s ease',
+      }}
     >
-      <LogOut size={12} />
       Esci
     </button>
   );
