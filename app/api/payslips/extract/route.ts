@@ -44,10 +44,27 @@ export async function POST(request: NextRequest) {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      const pageText = content.items
-        .map((item) => ('str' in item ? (item.str ?? '') : ''))
-        .join(' ');
-      pageTexts.push(pageText);
+
+      // Raggruppamento per riga fisica: usa la coordinata Y del transform
+      // (item.transform = [scaleX, skewX, skewY, scaleY, x, y])
+      const rowMap = new Map<number, { x: number; text: string }[]>();
+      for (const item of content.items) {
+        if (!('str' in item) || !item.str.trim()) continue;
+        const y = Math.round((item as { transform: number[] }).transform[5]);
+        const x = (item as { transform: number[] }).transform[4];
+        if (!rowMap.has(y)) rowMap.set(y, []);
+        rowMap.get(y)!.push({ x, text: item.str });
+      }
+
+      // Ordina le righe dall'alto in basso (Y decrescente in coordinate PDF)
+      // poi gli item per X crescente (sinistra→destra)
+      const lines = [...rowMap.entries()]
+        .sort(([a], [b]) => b - a)
+        .map(([, items]) =>
+          items.sort((a, b) => a.x - b.x).map(i => i.text).join(' '),
+        );
+
+      pageTexts.push(lines.join('\n'));
     }
 
     const fullText = pageTexts.join('\n');
