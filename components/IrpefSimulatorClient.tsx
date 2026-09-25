@@ -46,8 +46,8 @@ export default function IrpefSimulatorClient({ currentGrossAnnual, hasPayslipDat
 
       {!hasPayslipData && (
         <div className="rounded-xl px-4 py-2.5 flex gap-2"
-          style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)' }}>
-          <Info size={13} className="text-indigo-400 shrink-0 mt-0.5" />
+          style={{ background: 'var(--brand-dim)', border: '1px solid rgba(16,185,129,0.18)' }}>
+          <Info size={13} className="shrink-0 mt-0.5" style={{ color: 'var(--brand)' }} />
           <p className="text-xs text-slate-500">
             Nessuna busta paga caricata. Inserisci manualmente il tuo lordo annuo.
           </p>
@@ -91,13 +91,13 @@ export default function IrpefSimulatorClient({ currentGrossAnnual, hasPayslipDat
               <p className="text-[10px] text-slate-600">netto annuo stimato</p>
               <p className="text-sm font-semibold text-slate-400 tabular-nums mt-2">{fmt(result.current.netMonthly)}/mese</p>
             </div>
-            <div className="card p-5" style={{ border: '1px solid rgba(99,102,241,0.3)' }}>
+            <div className="card p-5" style={{ border: '1px solid rgba(16,185,129,0.3)' }}>
               <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Con l&apos;aumento</p>
-              <p className="text-2xl font-bold tabular-nums mb-1" style={{ color: '#818cf8' }}>
+              <p className="text-2xl font-bold tabular-nums mb-1" style={{ color: 'var(--brand-light)' }}>
                 {fmt(result.increased.netAnnual)}
               </p>
               <p className="text-[10px] text-slate-600">netto annuo stimato</p>
-              <p className="text-sm font-semibold tabular-nums mt-2" style={{ color: '#818cf8' }}>
+              <p className="text-sm font-semibold tabular-nums mt-2" style={{ color: 'var(--brand-light)' }}>
                 {fmt(result.increased.netMonthly)}/mese
               </p>
             </div>
@@ -105,18 +105,18 @@ export default function IrpefSimulatorClient({ currentGrossAnnual, hasPayslipDat
 
           {/* Guadagno netto */}
           <div className="card p-4 flex items-center justify-between"
-            style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)' }}>
+            style={{ background: 'var(--brand-dim)', border: '1px solid rgba(16,185,129,0.2)' }}>
             <div>
-              <p className="text-xs text-slate-400">Aumento netto stimato</p>
-              <p className="text-[10px] text-slate-600 mt-0.5">
+              <p className="text-xs" style={{ color: 'var(--text-2)' }}>Aumento netto stimato</p>
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>
                 Su {fmt(increaseAmount)} lordi aggiuntivi, il {fmtPct(result.effectiveRate)} va in tasse e contributi
               </p>
             </div>
             <div className="text-right">
-              <p className="text-lg font-bold tabular-nums" style={{ color: '#818cf8' }}>
+              <p className="text-lg font-bold tabular-nums" style={{ color: 'var(--brand-light)' }}>
                 +{fmt(result.netGainAnnual)}/anno
               </p>
-              <p className="text-xs text-indigo-400 tabular-nums">
+              <p className="text-xs tabular-nums" style={{ color: 'var(--brand)' }}>
                 +{fmt(result.netGainMonthly)}/mese
               </p>
             </div>

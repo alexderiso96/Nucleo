@@ -228,7 +228,7 @@ export default async function PayslipsPage({
                             </span>
                           )}
                         </div>
-                        <span className="text-xs font-semibold text-indigo-400 tabular-nums">
+                        <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--brand-light)' }}>
                           {fmt(current.overtime_amount)}
                         </span>
                       </div>
@@ -236,7 +236,7 @@ export default async function PayslipsPage({
                     {Number(current.meal_vouchers) > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-400">Buoni pasto</span>
-                        <span className="text-xs font-semibold text-indigo-400 tabular-nums">
+                        <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--brand-light)' }}>
                           {fmt(current.meal_vouchers)}
                         </span>
                       </div>
@@ -265,7 +265,7 @@ export default async function PayslipsPage({
                   </div>
                   <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--dark-700)' }}>
                     <Link href="/payslips/proiezione"
-                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                      className="text-xs transition-colors" style={{ color: 'var(--brand)' }}>
                       Simulazione proiezione TFR →
                     </Link>
                   </div>
@@ -335,7 +335,7 @@ export default async function PayslipsPage({
               </div>
               <Link
                 href="/payslips/annuale"
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors shrink-0"
+                className="text-xs transition-colors shrink-0" style={{ color: 'var(--brand)' }}
               >
                 Apri →
               </Link>
@@ -352,7 +352,7 @@ export default async function PayslipsPage({
               </div>
               <Link
                 href="/payslips/simulatore"
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors shrink-0"
+                className="text-xs transition-colors shrink-0" style={{ color: 'var(--brand)' }}
               >
                 Apri →
               </Link>

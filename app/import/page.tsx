@@ -272,7 +272,7 @@ export default function ImportPage() {
               className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all duration-200 py-12"
               style={{
                 border: `2px dashed ${dragging ? 'var(--brand-500)' : 'var(--dark-600)'}`,
-                background: dragging ? 'rgba(99,102,241,0.05)' : 'var(--dark-700)',
+                background: dragging ? 'rgba(16,185,129,0.05)' : 'var(--dark-700)',
               }}
             >
               <Upload size={24} className="text-slate-600" />
@@ -533,7 +533,7 @@ export default function ImportPage() {
         {/* ── Step: importing ──────────────────────────────────────────────── */}
         {step === 'importing' && (
           <div className="card p-12 flex flex-col items-center gap-4 anim-fade">
-            <Loader2 size={32} className="text-indigo-400 animate-spin" />
+            <Loader2 size={32} className="animate-spin" style={{ color: 'var(--brand)' }} />
             <p className="text-sm text-slate-400">Importazione in corso…</p>
           </div>
         )}

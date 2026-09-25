@@ -1,42 +1,43 @@
 @import "tailwindcss";
 
-/* ── Palette Nucleo v2 ─────────────────────────────── */
+/* ── Palette Nucleo v3 — Slate Premium + Emerald ─── */
 :root {
-  /* Background scale — contrasto reale tra livelli */
-  --bg:         #05101f;   /* pagina */
-  --surface-1:  #0c1b30;   /* card default */
-  --surface-2:  #112340;   /* hover / elevated */
-  --surface-3:  #172d50;   /* selected / active */
+  /* Backgrounds zinc scale */
+  --bg:         #09090b;   /* zinc-950 — pagina */
+  --surface-1:  #18181b;   /* zinc-900 — card */
+  --surface-2:  #27272a;   /* zinc-800 — elevated / input */
+  --surface-3:  #3f3f46;   /* zinc-700 — active / selected */
 
-  /* Borders */
-  --border:        rgba(255,255,255,0.07);
-  --border-strong: rgba(255,255,255,0.14);
+  /* Borders solid (non rgba) per contrasto reale */
+  --border:        #27272a;
+  --border-strong: #3f3f46;
 
-  /* Text — gerarchia a 3 livelli */
-  --text-1: #eef4ff;    /* numeri importanti, titoli */
-  --text-2: #7c9ab8;    /* etichette secondarie */
-  --text-3: #3d5872;    /* muted, disabled */
+  /* Text */
+  --text-1: #fafafa;    /* zinc-50 */
+  --text-2: #a1a1aa;    /* zinc-400 */
+  --text-3: #52525b;    /* zinc-600 */
 
-  /* Semantici */
-  --income:  #34d399;   /* entrate, positivo */
-  --expense: #fb7185;   /* uscite, negativo */
+  /* Semantici finanziari */
+  --income:  #34d399;   /* emerald-400 — entrate */
+  --expense: #fb7185;   /* rose-400   — uscite   */
   --warning: #fbbf24;
   --info:    #38bdf8;
 
-  /* Brand */
-  --brand:       #6366f1;
-  --brand-light: #818cf8;
-  --brand-dim:   rgba(99,102,241,0.12);
+  /* Brand emerald */
+  --brand:       #10b981;   /* emerald-500 */
+  --brand-light: #34d399;   /* emerald-400 */
+  --brand-dark:  #059669;   /* emerald-600 */
+  --brand-dim:   rgba(16,185,129,0.12);
 
-  /* Retrocompatibilità — variabili vecchie puntate alle nuove */
+  /* Retrocompatibilità variabili vecchie */
   --dark-900: var(--bg);
   --dark-800: var(--surface-1);
   --dark-700: var(--surface-2);
   --dark-600: var(--border);
   --brand-400: var(--brand-light);
   --brand-500: var(--brand);
-  --brand-600: #4f46e5;
-  --brand-700: #4338ca;
+  --brand-600: var(--brand-dark);
+  --brand-700: #047857;
 }
 
 * { box-sizing: border-box; }
@@ -44,13 +45,12 @@
 body {
   background-color: var(--bg);
   color: var(--text-1);
-  /* Sans-serif per UI, monospace solo dove serve per i numeri */
   font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   position: relative;
 }
 
-/* Aurora background */
+/* Aurora emerald leggero */
 body::before,
 body::after {
   content: '';
@@ -60,29 +60,28 @@ body::after {
   border-radius: 50%;
 }
 body::before {
-  top: -200px; left: -200px;
-  width: 640px; height: 640px;
-  background: radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 68%);
+  top: -300px; left: -300px;
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(16,185,129,0.05) 0%, transparent 65%);
 }
 body::after {
-  bottom: -200px; right: -200px;
-  width: 520px; height: 520px;
-  background: radial-gradient(circle, rgba(52,211,153,0.035) 0%, transparent 68%);
+  bottom: -300px; right: -300px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(16,185,129,0.03) 0%, transparent 65%);
 }
 
-/* Content above aurora */
 #__next, main, header, aside { position: relative; z-index: 1; }
 
-/* ── Animazioni CSS ─────────────────────────────── */
+/* ── Animazioni ─────────────────────────────────── */
 @keyframes fade-in   { from { opacity: 0; }                              to { opacity: 1; } }
 @keyframes slide-up  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slide-left{ from { opacity: 0; transform: translateX(-16px);}  to { opacity: 1; transform: translateX(0); } }
 @keyframes scale-in  { from { opacity: 0; transform: scale(0.96); }      to { opacity: 1; transform: scale(1); } }
 
-.anim-fade      { animation: fade-in    0.35s ease both; }
-.anim-slide-up  { animation: slide-up   0.35s ease both; }
-.anim-slide-left{ animation: slide-left 0.32s ease both; }
-.anim-scale     { animation: scale-in   0.28s ease both; }
+.anim-fade      { animation: fade-in    0.32s ease both; }
+.anim-slide-up  { animation: slide-up   0.32s ease both; }
+.anim-slide-left{ animation: slide-left 0.28s ease both; }
+.anim-scale     { animation: scale-in   0.24s ease both; }
 
 .anim-d1 { animation-delay:  50ms; }
 .anim-d2 { animation-delay: 100ms; }
@@ -97,7 +96,7 @@ body::after {
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
 
 /* ── Focus ──────────────────────────────────────── */
-*:focus-visible { outline: 2px solid rgba(99,102,241,0.5); outline-offset: 2px; }
+*:focus-visible { outline: 2px solid rgba(16,185,129,0.5); outline-offset: 2px; }
 
 /* ── Autofill ───────────────────────────────────── */
 input:-webkit-autofill,
@@ -111,15 +110,15 @@ input:-webkit-autofill:focus {
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 1rem;
+  border-radius: 0.875rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .card:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+  box-shadow: 0 0 0 1px var(--border-strong), 0 8px 32px rgba(0,0,0,0.4);
 }
 
-/* ── Pulsante primario ──────────────────────────── */
+/* ── Btn primary ────────────────────────────────── */
 .btn-primary {
   background: var(--brand);
   color: #fff;
@@ -129,12 +128,12 @@ input:-webkit-autofill:focus {
   transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #4f46e5;
+  background: var(--brand-dark);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+  box-shadow: 0 6px 24px rgba(16,185,129,0.35);
 }
 .btn-primary:active:not(:disabled) { transform: translateY(0); }
-.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Input ──────────────────────────────────────── */
 .input {
@@ -149,13 +148,13 @@ input:-webkit-autofill:focus {
 .input:focus {
   border-color: var(--brand);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+  box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
 }
 
-/* ── Numero in tabular ──────────────────────────── */
+/* ── Tabular numbers ────────────────────────────── */
 .tabular-nums { font-variant-numeric: tabular-nums; font-family: 'SF Mono', ui-monospace, monospace; }
 
-/* ── Badge categorie ────────────────────────────── */
+/* ── Badge ──────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -165,4 +164,9 @@ input:-webkit-autofill:focus {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+/* ── no-print ───────────────────────────────────── */
+@media print {
+  .no-print { display: none !important; }
 }

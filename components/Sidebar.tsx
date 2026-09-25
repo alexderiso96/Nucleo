@@ -36,7 +36,7 @@ export default function Sidebar() {
       {/* Logo mark */}
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center mb-4 text-xs font-bold"
-        style={{ background: 'var(--brand-600)', color: '#fff', boxShadow: '0 2px 10px rgba(99,102,241,0.35)' }}
+        style={{ background: 'var(--brand-dark)', color: '#fff', boxShadow: '0 2px 10px rgba(16,185,129,0.3)' }}
       >
         N
       </div>
@@ -53,7 +53,7 @@ export default function Sidebar() {
               className="relative flex items-center justify-center w-full h-10 rounded-lg transition-all duration-200 group"
               style={
                 active
-                  ? { background: 'rgba(99,102,241,0.15)', color: 'var(--brand-400)' }
+                  ? { background: 'rgba(16,185,129,0.12)', color: 'var(--brand-light)' }
                   : { color: '#475569' }
               }
             >

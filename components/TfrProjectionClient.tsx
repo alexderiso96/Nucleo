@@ -31,9 +31,9 @@ function CustomTooltip({
   return (
     <div
       className="px-3 py-2.5 rounded-lg text-xs"
-      style={{ background: '#0d1526', border: '1px solid #253355', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+      style={{ background: 'var(--surface-1)', border: '1px solid var(--border-strong)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
     >
-      <p className="text-slate-400 mb-2">Anno {label}</p>
+      <p className="mb-2" style={{ color: 'var(--text-2)' }}>Anno {label}</p>
       {payload.map(p => (
         <p key={p.name} className="font-semibold tabular-nums" style={{ color: p.color }}>
           {p.name === 'azienda' ? 'In azienda' : 'Fondo pensione'}: {fmt(p.value)}
@@ -97,11 +97,11 @@ export default function TfrProjectionClient({ currentTfr, monthlyAccrual, dataMo
       {/* Disclaimer */}
       <div
         className="rounded-xl px-4 py-3 flex gap-2.5"
-        style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)' }}
+        style={{ background: 'var(--brand-dim)', border: '1px solid rgba(16,185,129,0.2)' }}
       >
-        <Info size={14} className="text-indigo-400 shrink-0 mt-0.5" />
-        <p className="text-xs text-slate-400 leading-relaxed">
-          <span className="font-semibold text-indigo-300">Stima — non una previsione garantita.</span>{' '}
+        <Info size={14} className="shrink-0 mt-0.5" style={{ color: 'var(--brand)' }} />
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-2)' }}>
+          <span className="font-semibold" style={{ color: 'var(--brand-light)' }}>Stima — non una previsione garantita.</span>{' '}
           I numeri dipendono dalle ipotesi che hai impostato (inflazione, rendimento del fondo).
           Non si tratta di consulenza finanziaria o fiscale.
           {dataMonths < 6 && (
@@ -152,9 +152,9 @@ export default function TfrProjectionClient({ currentTfr, monthlyAccrual, dataMo
               onClick={() => setUsePension(false)}
               className="text-xs px-3 py-1.5 rounded-lg transition-colors"
               style={{
-                border: `1px solid ${!usePension ? '#6366f1' : 'var(--dark-600)'}`,
-                background: !usePension ? 'rgba(99,102,241,0.1)' : 'transparent',
-                color: !usePension ? '#a5b4fc' : '#64748b',
+                border: `1px solid ${!usePension ? 'var(--brand)' : 'var(--border-strong)'}`,
+                background: !usePension ? 'var(--brand-dim)' : 'transparent',
+                color: !usePension ? 'var(--brand-light)' : 'var(--text-3)',
               }}
             >
               Anni fissi
@@ -163,9 +163,9 @@ export default function TfrProjectionClient({ currentTfr, monthlyAccrual, dataMo
               onClick={() => setUsePension(true)}
               className="text-xs px-3 py-1.5 rounded-lg transition-colors"
               style={{
-                border: `1px solid ${usePension ? '#6366f1' : 'var(--dark-600)'}`,
-                background: usePension ? 'rgba(99,102,241,0.1)' : 'transparent',
-                color: usePension ? '#a5b4fc' : '#64748b',
+                border: `1px solid ${usePension ? 'var(--brand)' : 'var(--border-strong)'}`,
+                background: usePension ? 'var(--brand-dim)' : 'transparent',
+                color: usePension ? 'var(--brand-light)' : 'var(--text-3)',
               }}
             >
               Data pensione
@@ -177,7 +177,7 @@ export default function TfrProjectionClient({ currentTfr, monthlyAccrual, dataMo
               <input
                 type="range" min="1" max="40" value={years}
                 onChange={e => setYears(parseInt(e.target.value))}
-                className="flex-1 accent-indigo-500"
+                className="flex-1 accent-emerald-500"
               />
               <span className="text-sm font-semibold text-slate-200 tabular-nums w-20">
                 {years} {years === 1 ? 'anno' : 'anni'}
@@ -215,7 +215,7 @@ export default function TfrProjectionClient({ currentTfr, monthlyAccrual, dataMo
         <div className="card p-5">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-1">TFR in azienda</p>
           <p className="text-[10px] text-slate-700 mb-3">1,5% fisso + 75% inflazione ISTAT</p>
-          <p className="text-2xl font-bold tabular-nums" style={{ color: '#818cf8' }}>
+          <p className="text-2xl font-bold tabular-nums" style={{ color: 'var(--info)' }}>
             {fmt(final?.azienda ?? 0)}
           </p>
           <p className="text-[10px] text-slate-600 mt-1">
@@ -249,15 +249,15 @@ export default function TfrProjectionClient({ currentTfr, monthlyAccrual, dataMo
           <AreaChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="gradAzienda" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.2} />
+                <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gradFondo" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#34d399" stopOpacity={0.2} />
                 <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e2d47" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis
               dataKey="year"
               tick={{ fontSize: 10, fill: '#475569', fontFamily: 'ui-monospace, monospace' }}
@@ -274,8 +274,8 @@ export default function TfrProjectionClient({ currentTfr, monthlyAccrual, dataMo
               formatter={value => (value === 'azienda' ? 'In azienda' : 'Fondo pensione')}
               wrapperStyle={{ fontSize: 11, color: '#64748b', paddingTop: 8 }}
             />
-            <Area type="monotone" dataKey="azienda" stroke="#6366f1" strokeWidth={2}
-              fill="url(#gradAzienda)" dot={false} activeDot={{ r: 4, fill: '#818cf8' }} />
+            <Area type="monotone" dataKey="azienda" stroke="#38bdf8" strokeWidth={2}
+              fill="url(#gradAzienda)" dot={false} activeDot={{ r: 4, fill: '#7dd3fc' }} />
             <Area type="monotone" dataKey="fondo" stroke="#34d399" strokeWidth={2}
               fill="url(#gradFondo)" dot={false} activeDot={{ r: 4, fill: '#6ee7b7' }} />
           </AreaChart>

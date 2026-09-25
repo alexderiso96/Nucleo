@@ -60,7 +60,7 @@ export default function LoginPage() {
         <div className="mb-8">
           <h1
             className="text-2xl font-bold tracking-tight"
-            style={{ background: 'linear-gradient(90deg, #818cf8, #6366f1, #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+            style={{ background: 'linear-gradient(90deg, #34d399, #10b981, #059669)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
           >
             Nucleo
           </h1>
@@ -79,7 +79,7 @@ export default function LoginPage() {
               className="flex-1 py-2 text-xs font-semibold rounded-md transition-all duration-200"
               style={
                 mode === m
-                  ? { background: 'var(--brand-600)', color: '#fff', boxShadow: '0 2px 10px rgba(99,102,241,0.3)' }
+                  ? { background: 'var(--brand-dark)', color: '#fff', boxShadow: '0 2px 10px rgba(16,185,129,0.3)' }
                   : { color: '#64748b' }
               }
             >

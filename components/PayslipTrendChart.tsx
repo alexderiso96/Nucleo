@@ -26,7 +26,7 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="px-3 py-2 rounded-lg text-xs"
-      style={{ background: '#0d1526', border: '1px solid #253355', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+      style={{ background: 'var(--surface-1)', border: '1px solid var(--border-strong)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
       <p className="text-slate-400 mb-1">{label}</p>
       <p className="font-semibold text-emerald-400">{fmt(payload[0].value)}</p>
     </div>
@@ -46,7 +46,7 @@ export default function PayslipTrendChart({ data, highlightMonth }: Props) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#1e2d47" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="label"
           tick={{ fontSize: 10, fill: '#475569', fontFamily: 'ui-monospace, monospace' }}
@@ -66,7 +66,7 @@ export default function PayslipTrendChart({ data, highlightMonth }: Props) {
         {highlighted && (
           <ReferenceLine
             x={highlighted.label}
-            stroke="#6366f1"
+            stroke="var(--brand)"
             strokeDasharray="4 3"
             strokeWidth={1.5}
           />
@@ -74,10 +74,10 @@ export default function PayslipTrendChart({ data, highlightMonth }: Props) {
         <Line
           type="monotone"
           dataKey="net"
-          stroke="#6366f1"
+          stroke="var(--brand)"
           strokeWidth={2}
-          dot={{ r: 3, fill: '#6366f1', strokeWidth: 0 }}
-          activeDot={{ r: 5, fill: '#818cf8', strokeWidth: 0 }}
+          dot={{ r: 3, fill: 'var(--brand)', strokeWidth: 0 }}
+          activeDot={{ r: 5, fill: 'var(--brand-light)', strokeWidth: 0 }}
         />
       </LineChart>
     </ResponsiveContainer>

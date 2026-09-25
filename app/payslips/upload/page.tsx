@@ -135,7 +135,7 @@ function UploadStep({ onFile }: { onFile: (f: File) => void }) {
       </div>
 
       <div
-        className={`w-full max-w-md border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-4 py-14 px-6 cursor-pointer transition-colors ${dragging ? 'border-indigo-400 bg-indigo-500/5' : 'border-slate-700 hover:border-slate-500'}`}
+        className={`w-full max-w-md border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-4 py-14 px-6 cursor-pointer transition-colors ${dragging ? 'border-emerald-400 bg-emerald-500/5' : 'border-slate-700 hover:border-slate-500'}`}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
@@ -143,7 +143,7 @@ function UploadStep({ onFile }: { onFile: (f: File) => void }) {
       >
         <div
           className="w-14 h-14 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(99,102,241,0.1)' }}
+          style={{ background: 'var(--brand-dim)' }}
         >
           <Upload size={24} style={{ color: 'var(--brand-400)' }} />
         </div>

@@ -178,8 +178,8 @@ export default async function AnnualePage({
                       { label: 'Totale IRPEF trattenuta', value: summary.totalIrpef, color: '#f87171' },
                       { label: 'Totale contributi INPS', value: summary.totalInps, color: '#fb923c' },
                       { label: 'Totale addizionali reg./com.', value: summary.totalRegionalMunicipalTax, color: '#facc15' },
-                      { label: 'Totale straordinari', value: summary.totalOvertime, color: '#818cf8' },
-                      { label: 'Totale buoni pasto', value: summary.totalMealVouchers, color: '#818cf8' },
+                      { label: 'Totale straordinari', value: summary.totalOvertime, color: '#38bdf8' },
+                      { label: 'Totale buoni pasto', value: summary.totalMealVouchers, color: '#38bdf8' },
                     ]
                       .filter(r => r.value > 0)
                       .map(row => (
