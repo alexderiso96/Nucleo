@@ -120,15 +120,27 @@ export async function categorizeWithAI(
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0,
-          max_tokens: 500,
+          max_tokens: 1000,
         }),
       });
-      const json = await res.json() as { choices?: { message?: { content?: string } }[] };
-      const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
-      console.log('[ai] Groq raw response (first 300):', raw.slice(0, 300));
-      const parsed = parseResult(raw, descriptions.length);
-      console.log('[ai] Groq parsed:', parsed);
-      return parsed;
+      if (!res.ok) {
+        const errBody = await res.text();
+        console.error(`[ai] Groq HTTP ${res.status}:`, errBody.slice(0, 300));
+      } else {
+        const json = await res.json() as {
+          choices?: { message?: { content?: string } }[];
+          error?: { message: string; type?: string };
+        };
+        if (json.error) {
+          console.error('[ai] Groq API error:', json.error.message, json.error.type ?? '');
+        } else {
+          const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
+          console.log('[ai] Groq raw response (first 500):', raw.slice(0, 500));
+          const parsed = parseResult(raw, descriptions.length);
+          console.log('[ai] Groq parsed:', parsed);
+          return parsed;
+        }
+      }
     } catch (err) {
       console.error('[ai] Groq error:', err instanceof Error ? err.message : String(err));
     }
