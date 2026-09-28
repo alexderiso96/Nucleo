@@ -256,7 +256,8 @@ export function parseRows(
 
     // Importo
     let rawAmount: string;
-    if (map.amountType === 'split') {
+    const amountType = map.amountType ?? (map.debit || map.credit ? 'split' : 'single');
+    if (amountType === 'split') {
       const debit = map.debit ? row[map.debit]?.trim() : '';
       const credit = map.credit ? row[map.credit]?.trim() : '';
       // isEmptyAmount gestisce blank, "-", "0", "0,00", "0.00"
@@ -285,7 +286,7 @@ export function parseRows(
     }
 
     // Filtro per segno (colonna singola con valori +/-)
-    if (map.amountType === 'single' && map.signFilter && map.signFilter !== 'all') {
+    if (amountType === 'single' && map.signFilter && map.signFilter !== 'all') {
       if (map.signFilter === 'negative' && parsedAmount > 0) {
         return { ok: false, reason: `Accredito ignorato (importo positivo)`, rawIndex };
       }

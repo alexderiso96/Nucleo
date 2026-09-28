@@ -75,6 +75,7 @@ export default function ImportPage() {
   const [validRows, setValidRows] = useState<Extract<ParsedRow, { ok: true }>[]>([]);
   const [invalidRows, setInvalidRows] = useState<Extract<ParsedRow, { ok: false }>[]>([]);
   const [liveValid, setLiveValid] = useState<Extract<ParsedRow, { ok: true }>[]>([]);
+  const [liveFilteredCount, setLiveFilteredCount] = useState(0);
   const [showDiscarded, setShowDiscarded] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiReasoning, setAiReasoning] = useState<string | null>(null);
@@ -88,15 +89,19 @@ export default function ImportPage() {
   useEffect(() => {
     if (step !== 'mapping' || !parsedFile || !columnMap.date) {
       setLiveValid([]);
+      setLiveFilteredCount(0);
       return;
     }
     const hasAmount = columnMap.amountType === 'split'
       ? !!(columnMap.debit || columnMap.credit)
       : !!columnMap.amount;
-    if (!hasAmount) { setLiveValid([]); return; }
+    if (!hasAmount) { setLiveValid([]); setLiveFilteredCount(0); return; }
 
     const rows = parseRows(parsedFile.records, columnMap as ColumnMap);
-    setLiveValid(rows.filter((r): r is Extract<ParsedRow, { ok: true }> => r.ok).slice(0, 5));
+    const valid = rows.filter((r): r is Extract<ParsedRow, { ok: true }> => r.ok);
+    const filtered = rows.filter(r => !r.ok && (r as {reason:string}).reason.startsWith('Accredito'));
+    setLiveValid(valid.slice(0, 5));
+    setLiveFilteredCount(filtered.length);
   }, [columnMap, parsedFile, step]);
 
   // ── Role helpers ─────────────────────────────────────────────────────────────
@@ -123,9 +128,18 @@ export default function ImportPage() {
       if (next.typeColumn === col) delete next.typeColumn;
       // Rimuovi anche da altri eventuali conflitti di ruolo esclusivo
       if (role === 'date') { next.date = col; }
-      else if (role === 'amount') { next.amount = col; next.amountType = 'single'; delete next.debit; delete next.credit; }
-      else if (role === 'debit') { next.debit = col; next.amountType = 'split'; delete next.amount; }
-      else if (role === 'credit') { next.credit = col; next.amountType = 'split'; delete next.amount; }
+      else if (role === 'amount') {
+        next.amount = col;
+        next.amountType = 'single';
+        delete next.debit;
+        delete next.credit;
+        // Auto-rileva convenzione del segno dai dati reali
+        if (parsedFile) {
+          next.signFilter = detectSignConvention(parsedFile.records, col);
+        }
+      }
+      else if (role === 'debit') { next.debit = col; next.amountType = 'split'; delete next.amount; delete next.signFilter; }
+      else if (role === 'credit') { next.credit = col; next.amountType = 'split'; delete next.amount; delete next.signFilter; }
       else if (role === 'description') { next.description = col; }
       else if (role === 'type') { next.typeColumn = col; }
       return next;
@@ -215,9 +229,14 @@ export default function ImportPage() {
       const json = await res.json() as { mapping: ColumnMap | null };
       if (json.mapping) {
         const map = { ...json.mapping };
-        // Se colonna singola senza signFilter salvato, rileva dai dati
-        if (map.amountType === 'single' && !map.signFilter && map.amount) {
+        // Se colonna singola (o amountType non definito = vecchia mappatura) senza signFilter, rileva dai dati
+        const isSingleOrLegacy = !map.amountType || map.amountType === 'single';
+        if (isSingleOrLegacy && !map.signFilter && map.amount) {
           map.signFilter = detectSignConvention(records, map.amount);
+        }
+        // Normalizza amountType se mancante
+        if (!map.amountType) {
+          map.amountType = map.debit || map.credit ? 'split' : 'single';
         }
         setColumnMap(map);
         setSourceName(map.sourceName);
@@ -628,9 +647,21 @@ export default function ImportPage() {
                         </span>
                       </div>
                     ))}
-                    <p className="text-[10px] text-slate-600 mt-1">
-                      Mostrando le prime {liveValid.length} righe valide
-                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                        Prime 5 righe valide
+                      </p>
+                      {liveFilteredCount > 0 && (
+                        <p className="text-[10px]" style={{ color: 'var(--income)' }}>
+                          ✓ {liveFilteredCount} accrediti esclusi
+                        </p>
+                      )}
+                      {liveFilteredCount === 0 && columnMap.signFilter && columnMap.signFilter !== 'all' && (
+                        <p className="text-[10px] text-amber-400">
+                          ⚠ 0 accrediti esclusi — verifica il segno
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
