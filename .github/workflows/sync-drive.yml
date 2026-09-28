@@ -1,0 +1,16 @@
+name: Sync Google Drive
+
+on:
+  schedule:
+    - cron: '0 7,13,19 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Drive sync
+        run: |
+          curl -sf -X POST \
+            "${{ secrets.APP_URL }}/api/cron/sync-drive" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

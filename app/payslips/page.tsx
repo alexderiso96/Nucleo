@@ -8,6 +8,7 @@ import { sortPayslips, buildTrendPoints, computeVariation } from '@/lib/payslip-
 import { detectPatterns } from '@/lib/payslip-patterns';
 import type { PatternResult } from '@/lib/payslip-patterns';
 import type { Payslip } from '@/lib/types';
+import DriveStatus from '@/components/DriveStatus';
 
 const MONTH_FULL = [
   'Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
@@ -47,11 +48,10 @@ export default async function PayslipsPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: rawPayslips } = await supabase
-    .from('payslips')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('period_month', { ascending: true });
+  const [{ data: rawPayslips }, { data: profile }] = await Promise.all([
+    supabase.from('payslips').select('*').eq('user_id', user.id).order('period_month', { ascending: true }),
+    supabase.from('profiles').select('drive_refresh_token, drive_folder_id, drive_last_synced_at').eq('id', user.id).single(),
+  ]);
 
   const payslips = (rawPayslips ?? []) as Payslip[];
   const sorted = sortPayslips(payslips);
@@ -358,6 +358,12 @@ export default async function PayslipsPage({
               </Link>
             </div>
           )}
+
+          <DriveStatus
+            isConnected={!!profile?.drive_refresh_token}
+            hasFolderId={!!profile?.drive_folder_id}
+            lastSyncedAt={profile?.drive_last_synced_at ?? null}
+          />
         </main>
       </div>
     </div>

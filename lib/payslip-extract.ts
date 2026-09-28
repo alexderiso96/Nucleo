@@ -1,11 +1,7 @@
-export const runtime = 'nodejs';
-
-import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
-import { createClient } from '@/lib/supabaseServer';
 
 const JSON_SCHEMA = `{
   "periodMonth": "YYYY-MM-01 oppure null",
@@ -28,12 +24,28 @@ ${JSON_SCHEMA}
 I numeri italiani: punto = migliaia, virgola = decimale (es. 2.500,00 → 2500.00). Convertili in float.
 Rispondi SOLO con il JSON, senza markdown né spiegazioni.`;
 
+export interface ExtractedFields {
+  periodMonth?: string;
+  grossAmount?: number;
+  netAmount?: number;
+  irpef?: number;
+  inpsContributions?: number;
+  regionalMunicipalTax?: number;
+  overtimeHours?: number;
+  overtimeAmount?: number;
+  mealVouchers?: number;
+  tfrAccruedPeriod?: number;
+  tfrTotal?: number;
+  employerName?: string;
+  confidence: 'high' | 'low';
+}
+
 function parseExtracted(raw: string): Record<string, unknown> {
   const json = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
   return JSON.parse(json) as Record<string, unknown>;
 }
 
-function buildFields(extracted: Record<string, unknown>) {
+export function buildFields(extracted: Record<string, unknown>): ExtractedFields {
   const num = (v: unknown): number | undefined =>
     v !== null && v !== undefined && !isNaN(Number(v)) ? Number(v) : undefined;
 
@@ -59,14 +71,49 @@ function buildFields(extracted: Record<string, unknown>) {
   };
 }
 
+export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const workerPath = path.resolve(
+    process.cwd(),
+    'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+  );
+  pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
+
+  const pdf = await pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    useWorkerFetch: false,
+  }).promise;
+  let fullText = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+
+    const rowMap = new Map<number, { x: number; text: string }[]>();
+    for (const item of content.items) {
+      if (!('str' in item) || !item.str.trim()) continue;
+      const y = Math.round((item as { transform: number[] }).transform[5] / 3) * 3;
+      const x = (item as { transform: number[] }).transform[4];
+      if (!rowMap.has(y)) rowMap.set(y, []);
+      rowMap.get(y)!.push({ x, text: item.str });
+    }
+
+    const lines = [...rowMap.entries()]
+      .sort(([a], [b]) => b - a)
+      .map(([, items]) => items.sort((a, b) => a.x - b.x).map(i => i.text).join('  '));
+
+    fullText += lines.join('\n') + '\n\n';
+  }
+
+  return fullText;
+}
+
 async function extractWithGemini(buffer: ArrayBuffer): Promise<Record<string, unknown>> {
-  console.log('[gemini] init SDK');
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-3.5-flash-lite',
+    model: 'gemini-2.0-flash-lite',
     systemInstruction: SYSTEM_INSTRUCTION,
   });
-  console.log('[gemini] calling generateContent, pdf bytes:', buffer.byteLength);
   const result = await model.generateContent([
     {
       inlineData: {
@@ -76,48 +123,19 @@ async function extractWithGemini(buffer: ArrayBuffer): Promise<Record<string, un
     },
     'Estrai i dati da questa busta paga italiana e restituisci il JSON richiesto.',
   ]);
-  const raw = result.response.text();
-  console.log('[gemini] response length:', raw.length);
-  return parseExtracted(raw);
+  return parseExtracted(result.response.text());
 }
 
 async function extractWithGroq(buffer: ArrayBuffer): Promise<Record<string, unknown>> {
-  console.log('[groq] extracting text from PDF...');
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const workerPath = path.resolve(
-    process.cwd(),
-    'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
-  );
-  pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString();
+  const text = await extractTextFromPdf(buffer);
+  if (!text.trim()) throw new Error('empty text');
 
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false }).promise;
-  let fullText = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const rowMap = new Map<number, { x: number; text: string }[]>();
-    for (const item of content.items) {
-      if (!('str' in item) || !item.str.trim()) continue;
-      const y = Math.round((item as { transform: number[] }).transform[5] / 3) * 3;
-      const x = (item as { transform: number[] }).transform[4];
-      if (!rowMap.has(y)) rowMap.set(y, []);
-      rowMap.get(y)!.push({ x, text: item.str });
-    }
-    const lines = [...rowMap.entries()]
-      .sort(([a], [b]) => b - a)
-      .map(([, items]) => items.sort((a, b) => a.x - b.x).map(i => i.text).join('  '));
-    fullText += lines.join('\n') + '\n\n';
-  }
-  console.log('[groq] text extracted, length:', fullText.length);
-  if (!fullText.trim()) throw new Error('empty text');
-
-  console.log('[groq] calling LLM...');
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const chat = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
     messages: [
       { role: 'system', content: SYSTEM_INSTRUCTION },
-      { role: 'user',   content: `Testo busta paga:\n\n${fullText.slice(0, 6000)}` },
+      { role: 'user',   content: `Testo busta paga:\n\n${text.slice(0, 6000)}` },
     ],
     response_format: { type: 'json_object' },
     temperature: 0,
@@ -127,59 +145,21 @@ async function extractWithGroq(buffer: ArrayBuffer): Promise<Record<string, unkn
   return parseExtracted(chat.choices[0]?.message?.content ?? '{}');
 }
 
-export async function POST(request: NextRequest) {
-  console.log('[extract] START');
-
-  let user;
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch (err) {
-    console.error('[extract] auth error:', err instanceof Error ? err.message : err);
-    return NextResponse.json({ error: 'Auth error' }, { status: 500 });
-  }
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  console.log('[extract] auth OK');
-
-  let buffer: ArrayBuffer;
-  try {
-    const formData = await request.formData();
-    const file = formData.get('file');
-    if (!file || typeof file === 'string') {
-      return NextResponse.json({ error: 'No file' }, { status: 400 });
-    }
-    buffer = await (file as File).arrayBuffer();
-    console.log('[extract] file received, bytes:', buffer.byteLength);
-  } catch (err) {
-    console.error('[extract] formData error:', err instanceof Error ? err.message : err);
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
-  }
-
-  console.log('[extract] GOOGLE_AI_API_KEY set:', !!process.env.GOOGLE_AI_API_KEY);
-  console.log('[extract] GROQ_API_KEY set:', !!process.env.GROQ_API_KEY);
-
-  const providers: Array<{ name: string; fn: () => Promise<Record<string, unknown>> }> = [
+export async function extractPayslip(buffer: ArrayBuffer): Promise<ExtractedFields> {
+  const providers = [
     { name: 'gemini', fn: () => extractWithGemini(buffer) },
     { name: 'groq',   fn: () => extractWithGroq(buffer)   },
   ];
 
   for (const { name, fn } of providers) {
-    console.log(`[extract] trying ${name}...`);
     try {
       const extracted = await fn();
-      const foundKeys = Object.entries(extracted)
-        .filter(([, v]) => v !== null && v !== undefined)
-        .map(([k]) => k);
-      console.log(`[extract] ${name} OK — found keys:`, foundKeys);
-      return NextResponse.json({ fields: buildFields(extracted), _provider: name });
+      console.log(`[payslip-extract] ${name} OK`);
+      return buildFields(extracted);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const stack = err instanceof Error ? err.stack?.split('\n')[1] : '';
-      console.error(`[extract] ${name} FAILED: ${msg}`, stack ?? '');
+      console.error(`[payslip-extract] ${name} FAILED:`, err instanceof Error ? err.message : err);
     }
   }
 
-  console.error('[extract] all providers failed — returning low confidence');
-  return NextResponse.json({ fields: { confidence: 'low' as const } });
+  return { confidence: 'low' };
 }
