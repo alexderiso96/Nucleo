@@ -13,7 +13,7 @@ export interface ColumnMap {
 }
 
 export type ParsedRow =
-  | { ok: true; date: string; amount: number; description: string | null; rawIndex: number }
+  | { ok: true; date: string; amount: number; description: string | null; rawIndex: number; isIncome: boolean }
   | { ok: false; reason: string; rawIndex: number };
 
 // ── Encoding ─────────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ export function autoDetectMapping(headers: string[], records?: Record<string, st
   const typeCol = matchHeader(headers, TYPE_PATTERNS);
   if (typeCol) {
     result.typeColumn = typeCol;
-    result.typeFilter = 'debit';
+    result.typeFilter = 'all'; // importa sia entrate che uscite, marcate correttamente
   }
 
   // Per colonna singola: rileva convenzione del segno dai dati reali
@@ -256,26 +256,31 @@ export function parseRows(
 
     // Importo
     let rawAmount: string;
+    let isIncome = false;
     const amountType = map.amountType ?? (map.debit || map.credit ? 'split' : 'single');
+
     if (amountType === 'split') {
       const debit = map.debit ? row[map.debit]?.trim() : '';
       const credit = map.credit ? row[map.credit]?.trim() : '';
-      // isEmptyAmount gestisce blank, "-", "0", "0,00", "0.00"
       const hasDebit = !isEmptyAmount(debit);
       const hasCredit = !isEmptyAmount(credit);
 
-      // Determina tipo di movimento e applica filtro (default: solo addebiti)
-      const filter = map.typeFilter ?? 'debit';
-      if (filter !== 'all') {
-        if (filter === 'debit' && !hasDebit && hasCredit) {
-          return { ok: false, reason: `Accredito ignorato`, rawIndex };
-        }
-        if (filter === 'credit' && hasDebit && !hasCredit) {
-          return { ok: false, reason: `Addebito ignorato`, rawIndex };
-        }
+      if (!hasDebit && !hasCredit) {
+        return { ok: false, reason: 'Importo non trovato', rawIndex };
       }
 
-      rawAmount = hasDebit ? debit! : (credit ?? '');
+      // Salta le righe indesiderate quando typeFilter è selettivo
+      const filter = map.typeFilter ?? 'all';
+      if (filter === 'debit' && !hasDebit && hasCredit) {
+        return { ok: false, reason: 'Accredito saltato (filtro: solo addebiti)', rawIndex };
+      }
+      if (filter === 'credit' && hasDebit && !hasCredit) {
+        return { ok: false, reason: 'Addebito saltato (filtro: solo accrediti)', rawIndex };
+      }
+
+      isIncome = !hasDebit && hasCredit;
+      rawAmount = hasDebit ? debit! : credit!;
+
     } else {
       rawAmount = map.amount ? row[map.amount]?.trim() ?? '' : '';
     }
@@ -285,26 +290,35 @@ export function parseRows(
       return { ok: false, reason: `Importo non valido: "${rawAmount}"`, rawIndex };
     }
 
-    // Filtro per segno (colonna singola con valori +/-)
+    // Determina entrata/uscita per colonna singola con segno
     if (amountType === 'single' && map.signFilter && map.signFilter !== 'all') {
-      if (map.signFilter === 'negative' && parsedAmount > 0) {
-        return { ok: false, reason: `Accredito ignorato (importo positivo)`, rawIndex };
+      if (map.signFilter === 'negative') {
+        isIncome = parsedAmount > 0;  // negativo = uscita, positivo = entrata
+      } else if (map.signFilter === 'positive') {
+        isIncome = parsedAmount < 0;  // positivo = uscita, negativo = entrata
       }
-      if (map.signFilter === 'positive' && parsedAmount < 0) {
-        return { ok: false, reason: `Accredito ignorato (importo negativo)`, rawIndex };
+      // Salta se typeFilter esclude questo tipo
+      const filter = map.typeFilter ?? 'all';
+      if (filter === 'debit' && isIncome) {
+        return { ok: false, reason: 'Accredito saltato (filtro: solo addebiti)', rawIndex };
+      }
+      if (filter === 'credit' && !isIncome) {
+        return { ok: false, reason: 'Addebito saltato (filtro: solo accrediti)', rawIndex };
       }
     }
 
-    // Filtro tipo da colonna testuale (es. "Addebito" / "Accredito")
-    if (map.typeColumn && map.typeFilter && map.typeFilter !== 'all') {
+    // Filtro per colonna testuale (es. "Addebito" / "Accredito")
+    if (map.typeColumn) {
       const rawType = (row[map.typeColumn] ?? '').trim().toLowerCase();
-      const isCredit = CREDIT_TYPE_KEYWORDS.some(k => rawType.includes(k));
-      const isDebit = DEBIT_TYPE_KEYWORDS.some(k => rawType.includes(k));
-      if (map.typeFilter === 'debit' && isCredit && !isDebit) {
-        return { ok: false, reason: `Accredito ignorato: "${row[map.typeColumn]}"`, rawIndex };
+      const isCreditText = CREDIT_TYPE_KEYWORDS.some(k => rawType.includes(k));
+      const isDebitText = DEBIT_TYPE_KEYWORDS.some(k => rawType.includes(k));
+      isIncome = isCreditText && !isDebitText;
+      const filter = map.typeFilter ?? 'all';
+      if (filter === 'debit' && isIncome) {
+        return { ok: false, reason: `Accredito saltato: "${row[map.typeColumn]}"`, rawIndex };
       }
-      if (map.typeFilter === 'credit' && isDebit && !isCredit) {
-        return { ok: false, reason: `Addebito ignorato: "${row[map.typeColumn]}"`, rawIndex };
+      if (filter === 'credit' && !isIncome) {
+        return { ok: false, reason: `Addebito saltato: "${row[map.typeColumn]}"`, rawIndex };
       }
     }
 
@@ -316,6 +330,7 @@ export function parseRows(
       ok: true,
       date: toISODate(parsedDate),
       amount: Math.abs(parsedAmount),
+      isIncome,
       description,
       rawIndex,
     };

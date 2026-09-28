@@ -6,6 +6,7 @@ interface ImportRow {
   date: string;
   amount: number;
   description: string | null;
+  isIncome?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -72,12 +73,13 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         amount: row.amount,
         currency: 'EUR',
-        category,
-        category_confidence: confidence,
+        category: row.isIncome ? 'income' : category,
+        category_confidence: row.isIncome ? 'high' : confidence,
         description: row.description,
         expense_date: row.date,
         source: 'csv',
         is_shared: false,
+        is_income: row.isIncome ?? false,
       };
     });
 

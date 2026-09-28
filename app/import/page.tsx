@@ -300,7 +300,7 @@ export default function ImportPage() {
       const res = await fetch('/api/csv/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: validRows.map(r => ({ date: r.date, amount: r.amount, description: r.description })) }),
+        body: JSON.stringify({ rows: validRows.map(r => ({ date: r.date, amount: r.amount, description: r.description, isIncome: r.isIncome })) }),
       });
       const json = await res.json() as { imported: number; duplicates: number; total: number; error?: string };
       if (!res.ok) {
@@ -699,7 +699,7 @@ export default function ImportPage() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--dark-600)' }}>
-                      {['Data', 'Importo', 'Descrizione'].map(h => (
+                      {['Data', 'Importo', 'Descrizione', 'Tipo'].map(h => (
                         <th key={h} className="text-left py-2 text-[10px] uppercase tracking-widest text-slate-600 font-semibold pb-2">{h}</th>
                       ))}
                     </tr>
@@ -708,8 +708,15 @@ export default function ImportPage() {
                     {validRows.slice(0, 5).map(r => (
                       <tr key={r.rawIndex} style={{ borderBottom: '1px solid var(--dark-700)' }}>
                         <td className="py-2 text-slate-400 tabular-nums">{r.date}</td>
-                        <td className="py-2 text-slate-200 tabular-nums">{fmt(r.amount)}</td>
+                        <td className="py-2 tabular-nums font-medium" style={{ color: r.isIncome ? 'var(--income)' : 'var(--text-1)' }}>
+                          {r.isIncome ? '+' : ''}{fmt(r.amount)}
+                        </td>
                         <td className="py-2 text-slate-500 truncate max-w-[200px]">{r.description ?? '—'}</td>
+                        <td className="py-2">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={r.isIncome ? { background: 'rgba(16,185,129,0.12)', color: '#34d399' } : { background: 'rgba(100,116,139,0.12)', color: '#64748b' }}>
+                            {r.isIncome ? 'Entrata' : 'Uscita'}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -749,7 +756,15 @@ export default function ImportPage() {
                 Modifica mappatura
               </button>
               <button onClick={handleImport} disabled={validRows.length === 0} className="btn-primary flex-1 py-2.5 text-sm">
-                Importa {validRows.length} spese
+                {(() => {
+                  const incomeCount = validRows.filter(r => r.isIncome).length;
+                  const expenseCount = validRows.length - incomeCount;
+                  if (incomeCount > 0 && expenseCount > 0)
+                    return `Importa ${expenseCount} uscite + ${incomeCount} entrate`;
+                  if (incomeCount > 0)
+                    return `Importa ${incomeCount} entrate`;
+                  return `Importa ${expenseCount} uscite`;
+                })()}
               </button>
             </div>
           </div>

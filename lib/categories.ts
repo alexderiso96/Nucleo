@@ -1,4 +1,5 @@
 export const CATEGORIES = [
+  { value: 'income',          label: 'Entrata',           icon: '↑',  darkBg: 'rgba(16,185,129,0.14)',  darkText: '#34d399' },
   { value: 'alimentari',      label: 'Alimentari',        icon: '🛒', darkBg: 'rgba(16,185,129,0.14)',  darkText: '#34d399' },
   { value: 'ristoranti',      label: 'Ristoranti & Bar',  icon: '🍽️', darkBg: 'rgba(251,146,60,0.14)',  darkText: '#fb923c' },
   { value: 'trasporti',       label: 'Trasporti',          icon: '🚗', darkBg: 'rgba(56,189,248,0.14)',  darkText: '#38bdf8' },

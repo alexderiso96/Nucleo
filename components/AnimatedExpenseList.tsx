@@ -14,6 +14,7 @@ interface Expense {
   expense_date: string;
   source?: string | null;
   is_shared?: boolean;
+  is_income?: boolean;
   notes?: string | null;
 }
 
@@ -64,7 +65,8 @@ function buildGroups(expenses: Expense[]): DayGroup[] {
         const [y, m, d] = key.split('-').map(Number);
         label = new Date(y, m - 1, d).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
       }
-      return { dateKey: key, label, dayTotal: items.reduce((s, e) => s + Number(e.amount), 0), items };
+      const dayExpenses = items.filter(e => !e.is_income).reduce((s, e) => s + Number(e.amount), 0);
+      return { dateKey: key, label, dayTotal: dayExpenses, items };
     });
 }
 
@@ -279,7 +281,8 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
     categoryFilter === 'all' || (rows[e.id]?.category ?? e.category) === categoryFilter,
   );
   const groups = buildGroups(visible);
-  const total = visible.reduce((s, e) => s + Number(e.amount), 0);
+  const totalExpenses = visible.filter(e => !e.is_income).reduce((s, e) => s + Number(e.amount), 0);
+  const totalIncome = visible.filter(e => e.is_income).reduce((s, e) => s + Number(e.amount), 0);
   const usedCategories = CATEGORIES.filter(c =>
     notDeleted.some(e => (rows[e.id]?.category ?? e.category) === c.value),
   );
@@ -359,11 +362,12 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
                 const isConfirming = confirmDelete === expense.id;
                 const isEditingCat = editingCategory === expense.id;
                 const isEditingDesc = editingDescription === expense.id;
-                const isLowConf = row.confidence === 'low';
-                const catBg = categoryDarkBg(row.category);
-                const catText = categoryDarkText(row.category);
-                const label = categoryLabel(row.category);
-                const icon = categoryIcon(row.category);
+                const isIncome = expense.is_income ?? false;
+                const isLowConf = row.confidence === 'low' && !isIncome;
+                const catBg = isIncome ? 'rgba(16,185,129,0.12)' : categoryDarkBg(row.category);
+                const catText = isIncome ? '#34d399' : categoryDarkText(row.category);
+                const label = isIncome ? 'Entrata' : categoryLabel(row.category);
+                const icon = isIncome ? '↑' : categoryIcon(row.category);
                 const currentDesc = row.description;
 
                 return (
@@ -463,8 +467,11 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
                     </div>
 
                     {/* Importo */}
-                    <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: 'var(--expense)' }}>
-                      {fmt(Number(expense.amount))}
+                    <span
+                      className="text-sm font-semibold tabular-nums shrink-0"
+                      style={{ color: isIncome ? 'var(--income)' : 'var(--expense)' }}
+                    >
+                      {isIncome ? '+' : ''}{fmt(Number(expense.amount))}
                     </span>
 
                     {/* Note */}
@@ -532,15 +539,22 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
 
           {/* Totale */}
           <div
-            className="flex items-center justify-between px-4 py-3"
+            className="flex items-center justify-between gap-4 px-4 py-3"
             style={{ borderTop: '1px solid var(--border-strong)', background: 'var(--surface-2)' }}
           >
             <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-              Totale {monthLabel}
+              {monthLabel}
             </span>
-            <span className="text-base font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
-              {fmt(total)}
-            </span>
+            <div className="flex items-center gap-4">
+              {totalIncome > 0 && (
+                <span className="text-sm tabular-nums" style={{ color: 'var(--income)' }}>
+                  +{fmt(totalIncome)}
+                </span>
+              )}
+              <span className="text-base font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                {fmt(totalExpenses)}
+              </span>
+            </div>
           </div>
         </>
       )}
