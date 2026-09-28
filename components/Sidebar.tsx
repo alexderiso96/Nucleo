@@ -27,9 +27,10 @@ export default function Sidebar() {
         width: '200px',
         background: 'var(--dark-800)',
         borderRight: '1px solid var(--dark-600)',
-        minHeight: '100vh',
+        height: '100vh',
         position: 'sticky',
         top: 0,
+        overflowY: 'auto',
         zIndex: 10,
       }}
     >
@@ -102,22 +103,37 @@ export default function Sidebar() {
       </nav>
 
       {/* Settings in fondo */}
-      <div className="px-2">
-        {(() => {
-          const active = pathname === '/settings';
-          return (
-            <Link
-              href="/settings"
-              className="flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"
-              style={active ? { background: 'rgba(16,185,129,0.12)', color: 'var(--brand-light)' } : { color: 'var(--text-3)' }}
-              onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; } }}
-              onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'; } }}
-            >
-              <Settings size={16} strokeWidth={active ? 2.2 : 1.8} />
-              <span className="text-sm font-medium">Impostazioni</span>
-            </Link>
-          );
-        })()}
+      <div className="px-2 mt-auto pt-2" style={{ borderTop: '1px solid var(--dark-600)' }}>
+        <Link
+          href="/settings"
+          className="relative flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"
+          style={
+            pathname === '/settings'
+              ? { background: 'rgba(16,185,129,0.12)', color: 'var(--brand-light)' }
+              : { color: 'var(--text-3)' }
+          }
+          onMouseEnter={e => {
+            if (pathname !== '/settings') {
+              (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-2)';
+            }
+          }}
+          onMouseLeave={e => {
+            if (pathname !== '/settings') {
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-3)';
+            }
+          }}
+        >
+          {pathname === '/settings' && (
+            <span
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r"
+              style={{ background: 'var(--brand)' }}
+            />
+          )}
+          <Settings size={16} strokeWidth={pathname === '/settings' ? 2.2 : 1.8} />
+          <span className="text-sm font-medium">Impostazioni</span>
+        </Link>
       </div>
     </aside>
   );

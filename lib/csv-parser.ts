@@ -8,6 +8,8 @@ export interface ColumnMap {
   sourceName: string;
   typeColumn?: string;
   typeFilter?: 'debit' | 'credit' | 'all';
+  // per colonna singola con segno: filtra per segno dell'importo
+  signFilter?: 'negative' | 'positive' | 'all';
 }
 
 export type ParsedRow =
@@ -221,7 +223,21 @@ export function parseRows(
     if (map.amountType === 'split') {
       const debit = map.debit ? row[map.debit]?.trim() : '';
       const credit = map.credit ? row[map.credit]?.trim() : '';
-      rawAmount = debit && debit !== '' && debit !== '-' ? debit : (credit ?? '');
+      const hasDebit = !!(debit && debit !== '' && debit !== '-');
+      const hasCredit = !!(credit && credit !== '' && credit !== '-');
+
+      // Determina tipo di movimento e applica filtro (default: solo addebiti)
+      const filter = map.typeFilter ?? 'debit';
+      if (filter !== 'all') {
+        if (filter === 'debit' && !hasDebit && hasCredit) {
+          return { ok: false, reason: `Accredito ignorato`, rawIndex };
+        }
+        if (filter === 'credit' && hasDebit && !hasCredit) {
+          return { ok: false, reason: `Addebito ignorato`, rawIndex };
+        }
+      }
+
+      rawAmount = hasDebit ? debit! : (credit ?? '');
     } else {
       rawAmount = map.amount ? row[map.amount]?.trim() ?? '' : '';
     }
@@ -231,7 +247,17 @@ export function parseRows(
       return { ok: false, reason: `Importo non valido: "${rawAmount}"`, rawIndex };
     }
 
-    // Filtro tipo (Addebito/Accredito)
+    // Filtro per segno (colonna singola con valori +/-)
+    if (map.amountType === 'single' && map.signFilter && map.signFilter !== 'all') {
+      if (map.signFilter === 'negative' && parsedAmount > 0) {
+        return { ok: false, reason: `Accredito ignorato (importo positivo)`, rawIndex };
+      }
+      if (map.signFilter === 'positive' && parsedAmount < 0) {
+        return { ok: false, reason: `Accredito ignorato (importo negativo)`, rawIndex };
+      }
+    }
+
+    // Filtro tipo da colonna testuale (es. "Addebito" / "Accredito")
     if (map.typeColumn && map.typeFilter && map.typeFilter !== 'all') {
       const rawType = (row[map.typeColumn] ?? '').trim().toLowerCase();
       const isCredit = CREDIT_TYPE_KEYWORDS.some(k => rawType.includes(k));
