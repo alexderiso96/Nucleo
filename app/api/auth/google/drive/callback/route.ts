@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const error = request.nextUrl.searchParams.get('error');
 
   if (error || !code) {
-    return NextResponse.redirect(`${base}/payslips?drive=error`);
+    return NextResponse.redirect(`${base}/import?drive=error`);
   }
 
   const supabase = await createClient();
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const tokens = await tokenRes.json() as { refresh_token?: string };
   if (!tokens.refresh_token) {
-    return NextResponse.redirect(`${base}/payslips?drive=no_token`);
+    return NextResponse.redirect(`${base}/import?drive=no_token`);
   }
 
   await supabase
@@ -38,5 +38,5 @@ export async function GET(request: NextRequest) {
     .update({ drive_refresh_token: tokens.refresh_token })
     .eq('id', user.id);
 
-  return NextResponse.redirect(`${base}/payslips?drive=connected`);
+  return NextResponse.redirect(`${base}/import?drive=connected`);
 }

@@ -1,18 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-interface Props {
+interface DriveState {
   isConnected: boolean;
   hasFolderId: boolean;
   lastSyncedAt: string | null;
 }
 
-export default function DriveStatus({ isConnected, hasFolderId, lastSyncedAt }: Props) {
+export default function DriveStatus() {
+  const [state, setState] = useState<DriveState | null>(null);
   const [folderUrl, setFolderUrl] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(hasFolderId);
+  const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
+
+  useEffect(() => {
+    fetch('/api/profile/drive-status')
+      .then(r => r.json())
+      .then((data: DriveState) => {
+        setState(data);
+        setSaved(data.hasFolderId);
+      })
+      .catch(() => setState({ isConnected: false, hasFolderId: false, lastSyncedAt: null }));
+  }, []);
 
   function extractFolderId(url: string): string | null {
     const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
@@ -40,19 +51,18 @@ export default function DriveStatus({ isConnected, hasFolderId, lastSyncedAt }: 
     window.location.reload();
   }
 
-  if (!isConnected) {
+  if (!state) return null;
+
+  if (!state.isConnected) {
     return (
       <div className="card p-4 flex items-center justify-between">
         <div>
-          <p className="text-xs font-semibold text-slate-300">Sincronizzazione automatica</p>
+          <p className="text-xs font-semibold text-slate-300">Sincronizzazione automatica da Drive</p>
           <p className="text-[10px] text-slate-600 mt-0.5">
-            Collega Google Drive per importare le buste paga in automatico
+            Collega Google Drive per importare le transazioni bancarie in automatico
           </p>
         </div>
-        <a
-          href="/api/auth/google/drive"
-          className="btn-primary px-3 py-2 text-xs shrink-0 ml-4"
-        >
+        <a href="/api/auth/google/drive" className="btn-primary px-3 py-2 text-xs shrink-0 ml-4">
           Connetti Drive
         </a>
       </div>
@@ -65,7 +75,7 @@ export default function DriveStatus({ isConnected, hasFolderId, lastSyncedAt }: 
         <div>
           <p className="text-xs font-semibold text-slate-300">Drive connesso — scegli la cartella</p>
           <p className="text-[10px] text-slate-500 mt-0.5">
-            Incolla il link della cartella Google Drive con le tue buste paga PDF
+            Incolla il link della cartella Drive con i tuoi export bancari (CSV/Excel)
           </p>
         </div>
         <div className="flex gap-2">
@@ -97,8 +107,8 @@ export default function DriveStatus({ isConnected, hasFolderId, lastSyncedAt }: 
           Drive sincronizzato
         </p>
         <p className="text-[10px] text-slate-600 mt-0.5">
-          {lastSyncedAt
-            ? `Ultima sync: ${new Date(lastSyncedAt).toLocaleDateString('it-IT')}`
+          {state.lastSyncedAt
+            ? `Ultima sync: ${new Date(state.lastSyncedAt).toLocaleDateString('it-IT')}`
             : 'Prima sincronizzazione in attesa'}
         </p>
       </div>

@@ -21,22 +21,29 @@ export async function refreshAccessToken(refreshToken: string): Promise<string> 
   return data.access_token;
 }
 
-export async function listNewPdfs(
+export async function listNewFiles(
   accessToken: string,
   folderId: string | null,
   since: string | null,
 ): Promise<DriveFile[]> {
-  const parts = ["mimeType='application/pdf'", 'trashed=false'];
+  const mimeFilter = [
+    "mimeType='text/csv'",
+    "mimeType='text/plain'",
+    "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
+    "mimeType='application/vnd.ms-excel'",
+  ].join(' or ');
+
+  const parts = [`(${mimeFilter})`, 'trashed=false'];
   if (folderId) parts.push(`'${folderId}' in parents`);
   const cutoff = since
     ? new Date(since)
-    : (() => { const d = new Date(); d.setMonth(d.getMonth() - 13); return d; })();
+    : (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d; })();
   parts.push(`modifiedTime > '${cutoff.toISOString()}'`);
 
   const params = new URLSearchParams({
     q: parts.join(' and '),
     fields: 'files(id,name,modifiedTime,webViewLink)',
-    pageSize: '50',
+    pageSize: '20',
   });
 
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {

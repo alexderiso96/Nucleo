@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import DriveStatus from '@/components/DriveStatus';
 import Papa from 'papaparse';
 import { Upload, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 import {
@@ -242,8 +243,10 @@ export default function ImportPage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-6 py-8">
+        <DriveStatus />
+
         {/* Nota privacy */}
-        <p className="text-[10px] text-slate-700 mb-6">
+        <p className="text-[10px] text-slate-700 mt-6 mb-6">
           Nessun dato finanziario viene registrato nei log di sistema.
         </p>
 
