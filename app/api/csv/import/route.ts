@@ -90,8 +90,14 @@ export async function POST(request: NextRequest) {
     );
     console.log(`[import] toRecat (matched to batch) count=${toRecat.length}`);
 
-    if (toRecat.length > 0) {
-      const descs = toRecat.map(e => e.description ?? '');
+    // Cap a 50 per evitare timeout Vercel (10s su Hobby)
+    const RECAT_BATCH = 50;
+    const capped = toRecat.slice(0, RECAT_BATCH);
+    if (capped.length < toRecat.length)
+      console.log(`[import] toRecat capped to ${RECAT_BATCH} (total=${toRecat.length})`);
+
+    if (capped.length > 0) {
+      const descs = capped.map(e => e.description ?? '');
       let aiRes: Awaited<ReturnType<typeof categorizeWithAI>> | null = null;
       try {
         aiRes = await categorizeWithAI(descs, userCats);
@@ -104,28 +110,27 @@ export async function POST(request: NextRequest) {
         let resolved: string[] | null = null;
         try {
           resolved = await resolveAICategories(aiRes, user.id);
-          console.log(`[import] resolved categories:`, resolved);
         } catch (err) {
           console.error('[import] resolveAICategories error:', err instanceof Error ? err.message : String(err));
         }
 
         if (resolved) {
-          for (let k = 0; k < toRecat.length; k++) {
+          for (let k = 0; k < capped.length; k++) {
             const newCat = resolved[k];
-            const oldCat = toRecat[k].category;
+            const oldCat = capped[k].category;
             if (newCat !== 'altro' && newCat !== oldCat) {
               const { error: updErr } = await supabase
                 .from('expenses')
                 .update({ category: newCat, category_confidence: 'ai' })
-                .eq('id', toRecat[k].id);
+                .eq('id', capped[k].id);
               if (updErr) {
-                console.error(`[import] update error for id=${toRecat[k].id}:`, updErr.message);
+                console.error(`[import] update error for id=${capped[k].id}:`, updErr.message);
               } else {
-                console.log(`[import] recategorized id=${toRecat[k].id} ${oldCat} → ${newCat}`);
+                console.log(`[import] recategorized id=${capped[k].id} ${oldCat} → ${newCat}`);
                 recategorized++;
               }
             } else {
-              console.log(`[import] skipped id=${toRecat[k].id} (new=${newCat} old=${oldCat})`);
+              console.log(`[import] skipped id=${capped[k].id} (new=${newCat} old=${oldCat})`);
             }
           }
         }
