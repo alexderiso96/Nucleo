@@ -42,14 +42,17 @@ export default async function DashboardPage({
 
   const { data: expenses } = await supabase
     .from('expenses')
-    .select('id, amount, currency, category, category_confidence, description, expense_date, source')
+    .select('id, amount, currency, category, category_confidence, description, expense_date, source, is_income')
     .gte('expense_date', firstDay)
     .lte('expense_date', lastDay)
     .order('expense_date', { ascending: false })
     .order('created_at', { ascending: false });
 
   const list = expenses ?? [];
-  const totalMonth = list.reduce((sum, e) => sum + Number(e.amount), 0);
+  // Solo uscite per il totale spese
+  const totalMonth = list
+    .filter(e => !e.is_income)
+    .reduce((sum, e) => sum + Number(e.amount), 0);
 
   // Nucleo familiare — per abilitare il toggle di condivisione spese
   const { data: profile } = await supabase
@@ -67,23 +70,31 @@ export default async function DashboardPage({
     .eq('period_month', `${year}-${String(month + 1).padStart(2, '0')}-01`)
     .maybeSingle();
 
-  const incomeMonth = Number(payslipThisMonth?.net_amount ?? 0);
+  // Entrate: busta paga + accrediti da CSV
+  const csvIncome = list
+    .filter(e => e.is_income)
+    .reduce((sum, e) => sum + Number(e.amount), 0);
+  const incomeMonth = Number(payslipThisMonth?.net_amount ?? 0) + csvIncome;
 
   // Spese mese precedente (per trend %)
   const prevFirst = new Date(year, month - 1, 1).toISOString().split('T')[0];
   const prevLast  = new Date(year, month, 0).toISOString().split('T')[0];
   const { data: prevExpenses } = await supabase
     .from('expenses')
-    .select('amount')
+    .select('amount, is_income')
     .eq('user_id', user.id)
     .gte('expense_date', prevFirst)
     .lte('expense_date', prevLast);
-  const prevTotalMonth = (prevExpenses ?? []).reduce((s, e) => s + Number(e.amount), 0);
+  const prevTotalMonth = (prevExpenses ?? [])
+    .filter(e => !e.is_income)
+    .reduce((s, e) => s + Number(e.amount), 0);
 
-  // Spese giornaliere per sparkline
+  // Spese giornaliere per sparkline (solo uscite)
   const dailyMap: Record<string, number> = {};
   for (const e of list) {
-    dailyMap[e.expense_date] = (dailyMap[e.expense_date] ?? 0) + Number(e.amount);
+    if (!e.is_income) {
+      dailyMap[e.expense_date] = (dailyMap[e.expense_date] ?? 0) + Number(e.amount);
+    }
   }
   const dailyExpenses = Object.entries(dailyMap)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -151,7 +162,7 @@ export default async function DashboardPage({
             totalMonth={totalMonth}
             incomeMonth={incomeMonth}
             prevTotalMonth={prevTotalMonth}
-            count={list.length}
+            count={list.filter(e => !e.is_income).length}
             monthLabel={monthLabel}
             dailyExpenses={dailyExpenses}
           />
