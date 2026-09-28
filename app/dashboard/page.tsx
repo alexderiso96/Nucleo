@@ -9,6 +9,7 @@ import ExpenseForm from '@/components/ExpenseForm';
 import AnimatedExpenseList from '@/components/AnimatedExpenseList';
 import DashboardStats from '@/components/DashboardStats';
 import DriveSyncBanner from '@/components/DriveSyncBanner';
+import DateRangeFilter from '@/components/DateRangeFilter';
 
 function parseMonthParam(param: string | undefined): { year: number; month: number } {
   if (param && /^\d{4}-\d{2}$/.test(param)) {
@@ -26,10 +27,16 @@ function monthHref(year: number, month: number): string {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; from?: string; to?: string }>;
 }) {
-  const { month: monthParam } = await searchParams;
+  const { month: monthParam, from: fromParam, to: toParam } = await searchParams;
+
+  // Se presenti from/to, usa range personalizzato; altrimenti mese corrente
+  const hasRange = fromParam && toParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam) && /^\d{4}-\d{2}-\d{2}$/.test(toParam);
   const { year, month } = parseMonthParam(monthParam);
+
+  const firstDay = hasRange ? fromParam : new Date(year, month, 1).toISOString().split('T')[0];
+  const lastDay  = hasRange ? toParam  : new Date(year, month + 1, 0).toISOString().split('T')[0];
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -41,9 +48,6 @@ export default async function DashboardPage({
 
   // Sync automatico da Drive (incrementale, solo file nuovi)
   const driveSync = await syncDriveForUser().catch(() => null);
-
-  const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
-  const lastDay  = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
   const { data: expenses } = await supabase
     .from('expenses')
@@ -106,10 +110,12 @@ export default async function DashboardPage({
     .map(([date, total]) => ({ date, total }));
 
   const now = new Date();
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const isCurrentMonth = !hasRange && year === now.getFullYear() && month === now.getMonth();
   const prevDate = new Date(year, month - 1);
   const nextDate = new Date(year, month + 1);
-  const monthLabel = new Date(year, month).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  const monthLabel = hasRange
+    ? `${fromParam} → ${toParam}`
+    : new Date(year, month).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
@@ -124,37 +130,39 @@ export default async function DashboardPage({
               <h2 className="text-sm font-semibold text-slate-200">Dashboard</h2>
               <p className="text-[10px] text-slate-600 capitalize">{monthLabel}</p>
             </div>
-            <div className="flex items-center gap-1">
-              <Link
-                href={monthHref(prevDate.getFullYear(), prevDate.getMonth())}
-                className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:text-slate-200"
-                style={{ color: '#475569', border: '1px solid var(--dark-600)' }}
-                title="Mese precedente"
-              >
-                <ChevronLeft size={14} />
-              </Link>
-              {!isCurrentMonth && (
+            {!hasRange && (
+              <div className="flex items-center gap-1">
                 <Link
-                  href="/dashboard"
-                  className="px-2 py-0.5 rounded text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
-                  title="Torna al mese corrente"
+                  href={monthHref(prevDate.getFullYear(), prevDate.getMonth())}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:text-slate-200"
+                  style={{ color: '#475569', border: '1px solid var(--dark-600)' }}
+                  title="Mese precedente"
                 >
-                  Oggi
+                  <ChevronLeft size={14} />
                 </Link>
-              )}
-              <Link
-                href={monthHref(nextDate.getFullYear(), nextDate.getMonth())}
-                className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:text-slate-200"
-                style={{
-                  color: isCurrentMonth ? '#1e293b' : '#475569',
-                  border: '1px solid var(--dark-600)',
-                  pointerEvents: isCurrentMonth ? 'none' : 'auto',
-                }}
-                title="Mese successivo"
-              >
-                <ChevronRight size={14} />
-              </Link>
-            </div>
+                {!isCurrentMonth && (
+                  <Link
+                    href="/dashboard"
+                    className="px-2 py-0.5 rounded text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+                    title="Torna al mese corrente"
+                  >
+                    Oggi
+                  </Link>
+                )}
+                <Link
+                  href={monthHref(nextDate.getFullYear(), nextDate.getMonth())}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:text-slate-200"
+                  style={{
+                    color: isCurrentMonth ? '#1e293b' : '#475569',
+                    border: '1px solid var(--dark-600)',
+                    pointerEvents: isCurrentMonth ? 'none' : 'auto',
+                  }}
+                  title="Mese successivo"
+                >
+                  <ChevronRight size={14} />
+                </Link>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-slate-600 hidden sm:block">{user.email}</span>
@@ -166,6 +174,7 @@ export default async function DashboardPage({
           {driveSync && !driveSync.skipped && driveSync.imported > 0 && (
             <DriveSyncBanner imported={driveSync.imported} files={driveSync.files} />
           )}
+          <DateRangeFilter from={hasRange ? fromParam : undefined} to={hasRange ? toParam : undefined} />
           <DashboardStats
             totalMonth={totalMonth}
             incomeMonth={incomeMonth}

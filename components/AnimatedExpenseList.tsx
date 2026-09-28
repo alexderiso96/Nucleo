@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Check, Trash2, X, Loader2, Pencil, StickyNote } from 'lucide-react';
+import { Check, Trash2, X, Loader2, Pencil, StickyNote, Search, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
 import { CATEGORIES } from '@/lib/categories';
 
 interface Expense {
@@ -40,6 +40,10 @@ function categoryDarkText(value: string): string {
   return CATEGORIES.find(c => c.value === value)?.darkText ?? '#64748b';
 }
 
+type SortBy = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'desc-asc' | 'desc-desc';
+type TypeFilter = 'all' | 'expense' | 'income';
+type SourceFilter = 'all' | 'manual' | 'csv' | 'payslip';
+
 interface DayGroup {
   dateKey: string;
   label: string;
@@ -47,26 +51,27 @@ interface DayGroup {
   items: Expense[];
 }
 
-function buildGroups(expenses: Expense[]): DayGroup[] {
+function dayLabel(dateKey: string): string {
   const todayStr = new Date().toISOString().split('T')[0];
   const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  if (dateKey === todayStr) return 'Oggi';
+  if (dateKey === yesterdayStr) return 'Ieri';
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function buildGroups(expenses: Expense[], sortBy: SortBy): DayGroup[] {
   const map = new Map<string, Expense[]>();
   for (const e of expenses) {
     if (!map.has(e.expense_date)) map.set(e.expense_date, []);
     map.get(e.expense_date)!.push(e);
   }
+  const dateOrder = sortBy === 'date-asc' ? 1 : -1;
   return [...map.entries()]
-    .sort(([a], [b]) => b.localeCompare(a))
+    .sort(([a], [b]) => a.localeCompare(b) * dateOrder)
     .map(([key, items]) => {
-      let label: string;
-      if (key === todayStr) label = 'Oggi';
-      else if (key === yesterdayStr) label = 'Ieri';
-      else {
-        const [y, m, d] = key.split('-').map(Number);
-        label = new Date(y, m - 1, d).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
-      }
-      const dayExpenses = items.filter(e => !e.is_income).reduce((s, e) => s + Number(e.amount), 0);
-      return { dateKey: key, label, dayTotal: dayExpenses, items };
+      const dayTotal = items.filter(e => !e.is_income).reduce((s, e) => s + Number(e.amount), 0);
+      return { dateKey: key, label: dayLabel(key), dayTotal, items };
     });
 }
 
@@ -105,8 +110,17 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
   const [saving, setSaving] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const savedTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Filtri
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [search, setSearch] = useState('');
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+  const [sortBy, setSortBy] = useState<SortBy>('date-desc');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Note popup
   const [noteExpenseId, setNoteExpenseId] = useState<string | null>(null);
@@ -277,30 +291,394 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
   // ── Render ────────────────────────────────────────────────────────────────────
 
   const notDeleted = expenses.filter(e => !rows[e.id]?.deleted);
-  const visible = notDeleted.filter(e =>
-    categoryFilter === 'all' || (rows[e.id]?.category ?? e.category) === categoryFilter,
-  );
-  const groups = buildGroups(visible);
+
+  const minAmt = amountMin !== '' ? parseFloat(amountMin) : null;
+  const maxAmt = amountMax !== '' ? parseFloat(amountMax) : null;
+  const searchLow = search.toLowerCase().trim();
+
+  const visible = notDeleted.filter(e => {
+    const row = rows[e.id];
+    const cat = row?.category ?? e.category;
+    const desc = (row?.description ?? e.description ?? '').toLowerCase();
+    const amt = Number(e.amount);
+
+    if (categoryFilter !== 'all' && cat !== categoryFilter) return false;
+    if (typeFilter === 'expense' && e.is_income) return false;
+    if (typeFilter === 'income' && !e.is_income) return false;
+    if (sourceFilter === 'manual' && e.source && e.source !== 'manual') return false;
+    if (sourceFilter === 'csv' && e.source !== 'csv') return false;
+    if (sourceFilter === 'payslip' && e.source !== 'payslip') return false;
+    if (searchLow && !desc.includes(searchLow)) return false;
+    if (minAmt !== null && amt < minAmt) return false;
+    if (maxAmt !== null && amt > maxAmt) return false;
+    return true;
+  });
+
+  // Ordinamento (solo per sort non-date: lista flat invece di gruppi)
+  const isDateSort = sortBy === 'date-desc' || sortBy === 'date-asc';
+  const sorted = isDateSort ? visible : [...visible].sort((a, b) => {
+    if (sortBy === 'amount-desc') return Number(b.amount) - Number(a.amount);
+    if (sortBy === 'amount-asc')  return Number(a.amount) - Number(b.amount);
+    const da = (rows[a.id]?.description ?? a.description ?? '').toLowerCase();
+    const db = (rows[b.id]?.description ?? b.description ?? '').toLowerCase();
+    if (sortBy === 'desc-asc')  return da.localeCompare(db, 'it');
+    if (sortBy === 'desc-desc') return db.localeCompare(da, 'it');
+    return 0;
+  });
+
+  const groups = isDateSort ? buildGroups(sorted, sortBy) : [];
   const totalExpenses = visible.filter(e => !e.is_income).reduce((s, e) => s + Number(e.amount), 0);
-  const totalIncome = visible.filter(e => e.is_income).reduce((s, e) => s + Number(e.amount), 0);
+  const totalIncome   = visible.filter(e => e.is_income).reduce((s, e) => s + Number(e.amount), 0);
   const usedCategories = CATEGORIES.filter(c =>
     notDeleted.some(e => (rows[e.id]?.category ?? e.category) === c.value),
   );
+
+  const activeFilters = [
+    categoryFilter !== 'all',
+    typeFilter !== 'all',
+    sourceFilter !== 'all',
+    searchLow !== '',
+    amountMin !== '',
+    amountMax !== '',
+    sortBy !== 'date-desc',
+  ].filter(Boolean).length;
+
+  const SORT_LABELS: Record<SortBy, string> = {
+    'date-desc':   'Data ↓',
+    'date-asc':    'Data ↑',
+    'amount-desc': 'Importo ↓',
+    'amount-asc':  'Importo ↑',
+    'desc-asc':    'Descrizione A-Z',
+    'desc-desc':   'Descrizione Z-A',
+  };
+
+  const SOURCE_LABELS: Record<SourceFilter, string> = {
+    all:     'Tutte',
+    manual:  'Manuali',
+    csv:     'CSV / Drive',
+    payslip: 'Busta paga',
+  };
+
+  function resetFilters() {
+    setCategoryFilter('all');
+    setTypeFilter('all');
+    setSourceFilter('all');
+    setSearch('');
+    setAmountMin('');
+    setAmountMax('');
+    setSortBy('date-desc');
+  }
+
+  const renderTotale = () => (
+    <div
+      className="flex items-center justify-between gap-4 px-4 py-3"
+      style={{ borderTop: '1px solid var(--border-strong)', background: 'var(--surface-2)' }}
+    >
+      <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+        {monthLabel}
+      </span>
+      <div className="flex items-center gap-4">
+        {totalIncome > 0 && (
+          <span className="text-sm tabular-nums" style={{ color: 'var(--income)' }}>
+            +{fmt(totalIncome)}
+          </span>
+        )}
+        <span className="text-base font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+          {fmt(totalExpenses)}
+        </span>
+      </div>
+    </div>
+  );
+
+  const renderRow = (expense: Expense) => {
+    const row = rows[expense.id] ?? {
+      category: expense.category, confidence: null,
+      description: expense.description, notes: null,
+      saved: false, deleted: false,
+      shared: expense.is_shared ?? false, sharingLoading: false,
+    };
+    const isSaving      = saving === expense.id;
+    const isDeleting    = deleting === expense.id;
+    const isConfirming  = confirmDelete === expense.id;
+    const isEditingCat  = editingCategory === expense.id;
+    const isEditingDesc = editingDescription === expense.id;
+    const isIncome      = expense.is_income ?? false;
+    const isLowConf     = row.confidence === 'low' && !isIncome;
+    const catBg         = isIncome ? 'rgba(16,185,129,0.12)' : categoryDarkBg(row.category);
+    const catText       = isIncome ? '#34d399' : categoryDarkText(row.category);
+    const label         = isIncome ? 'Entrata' : categoryLabel(row.category);
+    const icon          = isIncome ? '↑' : categoryIcon(row.category);
+    const currentDesc   = row.description;
+
+    return (
+      <div
+        key={expense.id}
+        className="flex items-center gap-3 px-4 py-3 group transition-colors"
+        style={{ borderBottom: '1px solid var(--border)' }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      >
+        <div className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0 text-base" style={{ background: catBg }}>
+          {icon}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          {isEditingDesc ? (
+            <input
+              autoFocus
+              value={descDraft}
+              onChange={e => setDescDraft(e.target.value)}
+              onBlur={() => commitDescription(expense)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitDescription(expense);
+                if (e.key === 'Escape') setEditingDescription(null);
+              }}
+              className="text-sm w-full bg-transparent outline-none"
+              style={{ color: 'var(--text-1)', borderBottom: '1px solid var(--brand)', paddingBottom: '1px' }}
+            />
+          ) : (
+            <div className="flex items-center gap-1.5 group/desc">
+              <p className="text-sm truncate" style={{ color: 'var(--text-1)' }} title={currentDesc ?? label}>
+                {currentDesc ?? <span style={{ color: 'var(--text-3)' }}>{label}</span>}
+              </p>
+              <button
+                onClick={() => startEditDescription(expense)}
+                className="opacity-0 group-hover/desc:opacity-100 transition-opacity shrink-0"
+                title="Modifica descrizione"
+                style={{ color: 'var(--text-3)' }}
+              >
+                <Pencil size={11} />
+              </button>
+            </div>
+          )}
+
+          {/* Data visibile in modalità flat */}
+          {!isDateSort && (
+            <span className="text-[10px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+              {new Date(expense.expense_date + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: '2-digit' })}
+            </span>
+          )}
+
+          {isEditingCat ? (
+            <select
+              autoFocus
+              className="input text-[10px] px-2 py-0.5 rounded-full mt-0.5"
+              style={{ appearance: 'none', colorScheme: 'dark', minWidth: 120 }}
+              defaultValue={row.category}
+              onChange={e => handleCategoryChange(expense, e.target.value)}
+              onBlur={() => setEditingCategory(null)}
+            >
+              {CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
+              ))}
+            </select>
+          ) : (
+            <button
+              onClick={() => setEditingCategory(expense.id)}
+              title={isLowConf ? 'Categoria incerta — clicca per correggere' : 'Cambia categoria'}
+              className="flex items-center gap-1 mt-0.5"
+            >
+              {isSaving ? (
+                <Loader2 size={10} className="animate-spin" style={{ color: 'var(--text-3)' }} />
+              ) : row.saved ? (
+                <Check size={10} style={{ color: 'var(--income)' }} />
+              ) : null}
+              <span
+                className="badge text-[10px]"
+                style={isLowConf
+                  ? { background: 'rgba(251,191,36,0.12)', color: 'var(--warning)', border: '1px solid rgba(251,191,36,0.25)' }
+                  : { background: catBg, color: catText }}
+              >
+                {isLowConf && <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: 'var(--warning)' }} />}
+                {label}
+              </span>
+            </button>
+          )}
+        </div>
+
+        <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: isIncome ? 'var(--income)' : 'var(--expense)' }}>
+          {isIncome ? '+' : ''}{fmt(Number(expense.amount))}
+        </span>
+
+        <button
+          onClick={() => openNote(expense)}
+          title={row.notes ? 'Modifica nota' : 'Aggiungi nota'}
+          className="w-6 h-6 flex items-center justify-center rounded-md transition-all shrink-0"
+          style={{ color: row.notes ? 'var(--brand-light)' : 'var(--text-3)', background: row.notes ? 'rgba(16,185,129,0.1)' : 'transparent', opacity: row.notes ? 1 : undefined }}
+        >
+          <StickyNote size={12} />
+        </button>
+
+        {hasHousehold && (
+          <button
+            onClick={() => handleToggleShare(expense)}
+            disabled={row.sharingLoading}
+            title={row.shared ? 'Condivisa col partner — clicca per rendere privata' : 'Condividi col partner'}
+            className="w-6 h-6 flex items-center justify-center rounded-md transition-all shrink-0"
+            style={{ fontSize: '0.7rem', opacity: row.sharingLoading ? 0.5 : 1, background: row.shared ? 'rgba(16,185,129,0.12)' : 'transparent', border: row.shared ? '1px solid rgba(16,185,129,0.3)' : '1px solid transparent', color: row.shared ? 'var(--income)' : 'var(--text-3)' }}
+          >
+            {row.sharingLoading ? <Loader2 size={11} className="animate-spin" /> : '⇌'}
+          </button>
+        )}
+
+        <div className="w-7 flex items-center justify-center shrink-0">
+          {isDeleting ? (
+            <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-3)' }} />
+          ) : isConfirming ? (
+            <div className="flex gap-1">
+              <button onClick={() => handleDelete(expense.id)} className="w-5 h-5 flex items-center justify-center rounded" style={{ color: 'var(--expense)' }} title="Conferma">
+                <Check size={11} />
+              </button>
+              <button onClick={() => setConfirmDelete(null)} className="w-5 h-5 flex items-center justify-center rounded" style={{ color: 'var(--text-3)' }} title="Annulla">
+                <X size={11} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(expense.id)}
+              className="w-6 h-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ color: 'var(--text-3)' }}
+              title="Elimina"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
     <div className="card anim-slide-up anim-d4 overflow-hidden">
 
-      {/* Header + filtri */}
-      <div className="px-4 py-3 flex flex-col gap-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
-            Spese di {monthLabel}
+      {/* ── Barra filtri ─────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-2.5 px-4 pt-3 pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
+
+        {/* Riga 1: titolo + ricerca + ordinamento + toggle avanzati */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--text-2)' }}>
+            {monthLabel}
           </span>
-          <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-            {visible.length} di {notDeleted.length}
-          </span>
+          <div className="flex-1 relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-3)' }} />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Cerca descrizione…"
+              className="input w-full pl-7 pr-2 py-1.5 text-xs"
+            />
+          </div>
+          <div className="relative shrink-0">
+            <ArrowUpDown size={11} className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-3)' }} />
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as SortBy)}
+              className="input pl-6 pr-2 py-1.5 text-[11px]"
+              style={{ appearance: 'none', colorScheme: 'dark', minWidth: 110 }}
+            >
+              {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={() => setShowAdvanced(v => !v)}
+            className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors relative"
+            style={{
+              background: showAdvanced || activeFilters > 0 ? 'rgba(56,189,248,0.10)' : 'var(--surface-2)',
+              border: `1px solid ${showAdvanced || activeFilters > 0 ? 'rgba(56,189,248,0.3)' : 'var(--border-strong)'}`,
+              color: showAdvanced || activeFilters > 0 ? '#38bdf8' : 'var(--text-3)',
+            }}
+            title="Filtri avanzati"
+          >
+            <SlidersHorizontal size={12} />
+            {activeFilters > 0 && (
+              <span className="font-bold">{activeFilters}</span>
+            )}
+          </button>
         </div>
+
+        {/* Riga 2: filtri avanzati (collassabili) */}
+        {showAdvanced && (
+          <div className="flex flex-col gap-2.5 pt-1">
+
+            {/* Tipo */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-widest w-16 shrink-0" style={{ color: 'var(--text-3)' }}>Tipo</span>
+              <div className="flex gap-1">
+                {(['all', 'expense', 'income'] as TypeFilter[]).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setTypeFilter(v)}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
+                    style={typeFilter === v
+                      ? { background: v === 'income' ? 'rgba(52,211,153,0.2)' : v === 'expense' ? 'rgba(251,113,133,0.2)' : 'var(--brand)', color: v === 'income' ? '#34d399' : v === 'expense' ? '#fb7185' : '#fff' }
+                      : { background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border-strong)' }}
+                  >
+                    {v === 'all' ? 'Tutti' : v === 'expense' ? 'Uscite' : 'Entrate'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Fonte */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-widest w-16 shrink-0" style={{ color: 'var(--text-3)' }}>Fonte</span>
+              <div className="flex gap-1 flex-wrap">
+                {(Object.entries(SOURCE_LABELS) as [SourceFilter, string][]).map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => setSourceFilter(v)}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
+                    style={sourceFilter === v
+                      ? { background: 'var(--brand)', color: '#fff' }
+                      : { background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border-strong)' }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Range importo */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-widest w-16 shrink-0" style={{ color: 'var(--text-3)' }}>Importo</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={amountMin}
+                  onChange={e => setAmountMin(e.target.value)}
+                  placeholder="Min €"
+                  className="input px-2 py-1 text-xs w-20"
+                />
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>—</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={amountMax}
+                  onChange={e => setAmountMax(e.target.value)}
+                  placeholder="Max €"
+                  className="input px-2 py-1 text-xs w-20"
+                />
+              </div>
+            </div>
+
+            {/* Reset */}
+            {activeFilters > 0 && (
+              <button
+                onClick={resetFilters}
+                className="self-start text-[11px] text-red-400 hover:text-red-300 transition-colors"
+              >
+                Azzera tutti i filtri
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Riga 3: filtro categoria (sempre visibile) */}
         <div className="flex gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           <button
             onClick={() => setCategoryFilter('all')}
@@ -328,14 +706,22 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
             );
           })}
         </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+            {visible.length} di {notDeleted.length} voci
+            {!isDateSort && <span className="ml-1">· {SORT_LABELS[sortBy]}</span>}
+          </span>
+        </div>
       </div>
 
       {/* Lista */}
       {visible.length === 0 ? (
         <div className="px-5 py-12 text-center text-sm" style={{ color: 'var(--text-3)' }}>
-          {notDeleted.length === 0 ? 'Nessuna spesa questo mese.' : 'Nessuna spesa per questa categoria.'}
+          {notDeleted.length === 0 ? 'Nessuna voce in questo periodo.' : 'Nessuna voce corrisponde ai filtri.'}
         </div>
-      ) : (
+      ) : isDateSort ? (
+        /* ── Visualizzazione raggruppata per giorno ── */
         <>
           {groups.map(group => (
             <div key={group.dateKey}>
@@ -351,211 +737,16 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
                 </span>
               </div>
 
-              {group.items.map(expense => {
-                const row = rows[expense.id] ?? {
-                  category: expense.category, confidence: null,
-                  description: expense.description, saved: false,
-                  deleted: false, shared: expense.is_shared ?? false, sharingLoading: false,
-                };
-                const isSaving = saving === expense.id;
-                const isDeleting = deleting === expense.id;
-                const isConfirming = confirmDelete === expense.id;
-                const isEditingCat = editingCategory === expense.id;
-                const isEditingDesc = editingDescription === expense.id;
-                const isIncome = expense.is_income ?? false;
-                const isLowConf = row.confidence === 'low' && !isIncome;
-                const catBg = isIncome ? 'rgba(16,185,129,0.12)' : categoryDarkBg(row.category);
-                const catText = isIncome ? '#34d399' : categoryDarkText(row.category);
-                const label = isIncome ? 'Entrata' : categoryLabel(row.category);
-                const icon = isIncome ? '↑' : categoryIcon(row.category);
-                const currentDesc = row.description;
-
-                return (
-                  <div
-                    key={expense.id}
-                    className="flex items-center gap-3 px-4 py-3 group transition-colors"
-                    style={{ borderBottom: '1px solid var(--border)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {/* Icona categoria */}
-                    <div
-                      className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0 text-base"
-                      style={{ background: catBg }}
-                    >
-                      {icon}
-                    </div>
-
-                    {/* Testo */}
-                    <div className="flex-1 min-w-0">
-                      {/* Descrizione — editabile inline */}
-                      {isEditingDesc ? (
-                        <input
-                          autoFocus
-                          value={descDraft}
-                          onChange={e => setDescDraft(e.target.value)}
-                          onBlur={() => commitDescription(expense)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') commitDescription(expense);
-                            if (e.key === 'Escape') setEditingDescription(null);
-                          }}
-                          className="text-sm w-full bg-transparent outline-none"
-                          style={{
-                            color: 'var(--text-1)',
-                            borderBottom: '1px solid var(--brand)',
-                            paddingBottom: '1px',
-                          }}
-                        />
-                      ) : (
-                        <div className="flex items-center gap-1.5 group/desc">
-                          <p
-                            className="text-sm truncate"
-                            style={{ color: 'var(--text-1)' }}
-                            title={currentDesc ?? label}
-                          >
-                            {currentDesc ?? <span style={{ color: 'var(--text-3)' }}>{label}</span>}
-                          </p>
-                          <button
-                            onClick={() => startEditDescription(expense)}
-                            className="opacity-0 group-hover/desc:opacity-100 transition-opacity shrink-0"
-                            title="Modifica descrizione"
-                            style={{ color: 'var(--text-3)' }}
-                          >
-                            <Pencil size={11} />
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Badge categoria */}
-                      {isEditingCat ? (
-                        <select
-                          autoFocus
-                          className="input text-[10px] px-2 py-0.5 rounded-full mt-0.5"
-                          style={{ appearance: 'none', colorScheme: 'dark', minWidth: 120 }}
-                          defaultValue={row.category}
-                          onChange={e => handleCategoryChange(expense, e.target.value)}
-                          onBlur={() => setEditingCategory(null)}
-                        >
-                          {CATEGORIES.map(c => (
-                            <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <button
-                          onClick={() => setEditingCategory(expense.id)}
-                          title={isLowConf ? 'Categoria incerta — clicca per correggere' : 'Cambia categoria'}
-                          className="flex items-center gap-1 mt-0.5"
-                        >
-                          {isSaving ? (
-                            <Loader2 size={10} className="animate-spin" style={{ color: 'var(--text-3)' }} />
-                          ) : row.saved ? (
-                            <Check size={10} style={{ color: 'var(--income)' }} />
-                          ) : null}
-                          <span
-                            className="badge text-[10px]"
-                            style={isLowConf
-                              ? { background: 'rgba(251,191,36,0.12)', color: 'var(--warning)', border: '1px solid rgba(251,191,36,0.25)' }
-                              : { background: catBg, color: catText }}
-                          >
-                            {isLowConf && (
-                              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: 'var(--warning)' }} />
-                            )}
-                            {label}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Importo */}
-                    <span
-                      className="text-sm font-semibold tabular-nums shrink-0"
-                      style={{ color: isIncome ? 'var(--income)' : 'var(--expense)' }}
-                    >
-                      {isIncome ? '+' : ''}{fmt(Number(expense.amount))}
-                    </span>
-
-                    {/* Note */}
-                    <button
-                      onClick={() => openNote(expense)}
-                      title={row.notes ? 'Modifica nota' : 'Aggiungi nota'}
-                      className="w-6 h-6 flex items-center justify-center rounded-md transition-all shrink-0"
-                      style={{
-                        color: row.notes ? 'var(--brand-light)' : 'var(--text-3)',
-                        background: row.notes ? 'rgba(16,185,129,0.1)' : 'transparent',
-                        opacity: row.notes ? 1 : undefined,
-                      }}
-                    >
-                      <StickyNote size={12} />
-                    </button>
-
-                    {/* Condividi */}
-                    {hasHousehold && (
-                      <button
-                        onClick={() => handleToggleShare(expense)}
-                        disabled={row.sharingLoading}
-                        title={row.shared ? 'Condivisa col partner — clicca per rendere privata' : 'Condividi col partner'}
-                        className="w-6 h-6 flex items-center justify-center rounded-md transition-all shrink-0"
-                        style={{
-                          fontSize: '0.7rem',
-                          opacity: row.sharingLoading ? 0.5 : 1,
-                          background: row.shared ? 'rgba(16,185,129,0.12)' : 'transparent',
-                          border: row.shared ? '1px solid rgba(16,185,129,0.3)' : '1px solid transparent',
-                          color: row.shared ? 'var(--income)' : 'var(--text-3)',
-                        }}
-                      >
-                        {row.sharingLoading ? <Loader2 size={11} className="animate-spin" /> : '⇌'}
-                      </button>
-                    )}
-
-                    {/* Delete */}
-                    <div className="w-7 flex items-center justify-center shrink-0">
-                      {isDeleting ? (
-                        <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-3)' }} />
-                      ) : isConfirming ? (
-                        <div className="flex gap-1">
-                          <button onClick={() => handleDelete(expense.id)} className="w-5 h-5 flex items-center justify-center rounded" style={{ color: 'var(--expense)' }} title="Conferma">
-                            <Check size={11} />
-                          </button>
-                          <button onClick={() => setConfirmDelete(null)} className="w-5 h-5 flex items-center justify-center rounded" style={{ color: 'var(--text-3)' }} title="Annulla">
-                            <X size={11} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmDelete(expense.id)}
-                          className="w-6 h-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ color: 'var(--text-3)' }}
-                          title="Elimina spesa"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {group.items.map(expense => renderRow(expense))}
             </div>
           ))}
-
-          {/* Totale */}
-          <div
-            className="flex items-center justify-between gap-4 px-4 py-3"
-            style={{ borderTop: '1px solid var(--border-strong)', background: 'var(--surface-2)' }}
-          >
-            <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-              {monthLabel}
-            </span>
-            <div className="flex items-center gap-4">
-              {totalIncome > 0 && (
-                <span className="text-sm tabular-nums" style={{ color: 'var(--income)' }}>
-                  +{fmt(totalIncome)}
-                </span>
-              )}
-              <span className="text-base font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
-                {fmt(totalExpenses)}
-              </span>
-            </div>
-          </div>
+          {renderTotale()}
+        </>
+      ) : (
+        /* ── Visualizzazione flat (ordina per importo / descrizione) ── */
+        <>
+          {sorted.map(expense => renderRow(expense))}
+          {renderTotale()}
         </>
       )}
     </div>
