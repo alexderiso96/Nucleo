@@ -169,7 +169,7 @@ export async function syncDriveForUser(): Promise<SyncResult> {
             if (newCat !== 'altro' && newCat !== oldCat) {
               await supabase
                 .from('expenses')
-                .update({ category: newCat, category_confidence: 'ai' })
+                .update({ category: newCat, category_confidence: 'high' })
                 .eq('id', toRecat[k].id);
               totalRecategorized++;
               console.log(`[drive-sync] recategorized id=${toRecat[k].id} ${oldCat} → ${newCat}`);

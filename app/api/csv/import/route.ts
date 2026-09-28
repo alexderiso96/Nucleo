@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
             if (newCat !== 'altro' && newCat !== oldCat) {
               const { error: updErr } = await supabase
                 .from('expenses')
-                .update({ category: newCat, category_confidence: 'ai' })
+                .update({ category: newCat, category_confidence: 'high' })
                 .eq('id', capped[k].id);
               if (updErr) {
                 console.error(`[import] update error for id=${capped[k].id}:`, updErr.message);
