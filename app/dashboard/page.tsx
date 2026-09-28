@@ -63,13 +63,13 @@ export default async function DashboardPage({
     .filter(e => !e.is_income)
     .reduce((sum, e) => sum + Number(e.amount), 0);
 
-  // Nucleo familiare — per abilitare il toggle di condivisione spese
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('household_id')
-    .eq('id', user.id)
-    .single();
+  // Nucleo familiare + categorie utente — in parallelo
+  const [{ data: profile }, { data: userCatsData }] = await Promise.all([
+    supabase.from('profiles').select('household_id').eq('id', user.id).single(),
+    supabase.from('user_categories').select('value, label, icon, color').eq('user_id', user.id),
+  ]);
   const hasHousehold = Boolean(profile?.household_id);
+  const userCategories = (userCatsData ?? []) as { value: string; label: string; icon: string; color: string }[];
 
   // Netto del mese corrente da buste paga (per "Entrate")
   const { data: payslipThisMonth } = await supabase
@@ -186,9 +186,9 @@ export default async function DashboardPage({
           <div className="card p-5 anim-slide-up anim-d3">
             <p className="text-[10px] font-semibold uppercase tracking-widest mb-4"
               style={{ color: 'var(--text-3)' }}>Aggiungi spesa</p>
-            <ExpenseForm />
+            <ExpenseForm userCategories={userCategories} />
           </div>
-          <AnimatedExpenseList expenses={list} monthLabel={monthLabel} hasHousehold={hasHousehold} />
+          <AnimatedExpenseList expenses={list} monthLabel={monthLabel} hasHousehold={hasHousehold} userCategories={userCategories} />
         </main>
       </div>
     </div>

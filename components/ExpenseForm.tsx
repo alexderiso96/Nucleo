@@ -7,13 +7,22 @@ import { createClient } from '@/lib/supabaseClient';
 import { CATEGORIES } from '@/lib/categories';
 import { Plus, Check, Loader2, X } from 'lucide-react';
 
+interface UserCat { value: string; label: string; icon: string; color: string }
+
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
 const defaultCategory = 'altro';
 
-export default function ExpenseForm() {
+export default function ExpenseForm({ userCategories = [] }: { userCategories?: UserCat[] }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [amount, setAmount] = useState('');
@@ -87,7 +96,19 @@ export default function ExpenseForm() {
     setLoading(false);
   }
 
-  const selectedCat = CATEGORIES.find(c => c.value === category) ?? CATEGORIES[CATEGORIES.length - 1];
+  const builtInForPicker = CATEGORIES.filter(c => c.value !== 'income');
+  const userCatsConverted = userCategories.map(c => ({
+    value:    c.value,
+    label:    c.label,
+    icon:     c.icon,
+    darkBg:   hexToRgba(c.color, 0.14),
+    darkText: c.color,
+  }));
+  const allCats = [...builtInForPicker, ...userCatsConverted];
+
+  const selectedCat =
+    allCats.find(c => c.value === category) ??
+    CATEGORIES[CATEGORIES.length - 1];
 
   return (
     <div ref={containerRef}>
@@ -178,7 +199,7 @@ export default function ExpenseForm() {
                 </div>
 
                 <div className="grid grid-cols-5 gap-2">
-                  {CATEGORIES.map(cat => {
+                  {allCats.map(cat => {
                     const active = category === cat.value;
                     return (
                       <button

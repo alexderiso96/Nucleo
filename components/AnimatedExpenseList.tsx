@@ -18,26 +18,45 @@ interface Expense {
   notes?: string | null;
 }
 
+interface UserCat { value: string; label: string; icon: string; color: string }
+
 interface Props {
   expenses: Expense[];
   monthLabel: string;
   hasHousehold?: boolean;
+  userCategories?: UserCat[];
 }
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
 
-function categoryIcon(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.icon ?? '📦';
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
-function categoryLabel(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.label ?? value;
+
+function categoryIcon(value: string, userCats: UserCat[] = []): string {
+  return CATEGORIES.find(c => c.value === value)?.icon
+    ?? userCats.find(c => c.value === value)?.icon
+    ?? '📦';
 }
-function categoryDarkBg(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.darkBg ?? 'rgba(100,116,139,0.14)';
+function categoryLabel(value: string, userCats: UserCat[] = []): string {
+  return CATEGORIES.find(c => c.value === value)?.label
+    ?? userCats.find(c => c.value === value)?.label
+    ?? value;
 }
-function categoryDarkText(value: string): string {
-  return CATEGORIES.find(c => c.value === value)?.darkText ?? '#64748b';
+function categoryDarkBg(value: string, userCats: UserCat[] = []): string {
+  const builtin = CATEGORIES.find(c => c.value === value)?.darkBg;
+  if (builtin) return builtin;
+  const uc = userCats.find(c => c.value === value);
+  return uc ? hexToRgba(uc.color, 0.14) : 'rgba(100,116,139,0.14)';
+}
+function categoryDarkText(value: string, userCats: UserCat[] = []): string {
+  return CATEGORIES.find(c => c.value === value)?.darkText
+    ?? userCats.find(c => c.value === value)?.color
+    ?? '#64748b';
 }
 
 type SortBy = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'desc-asc' | 'desc-desc';
@@ -86,7 +105,7 @@ interface RowState {
   sharingLoading: boolean;
 }
 
-export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold = false }: Props) {
+export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold = false, userCategories = [] }: Props) {
   const [rows, setRows] = useState<Record<string, RowState>>(() => {
     const init: Record<string, RowState> = {};
     for (const e of expenses) {
@@ -329,9 +348,19 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
   const groups = isDateSort ? buildGroups(sorted, sortBy) : [];
   const totalExpenses = visible.filter(e => !e.is_income).reduce((s, e) => s + Number(e.amount), 0);
   const totalIncome   = visible.filter(e => e.is_income).reduce((s, e) => s + Number(e.amount), 0);
-  const usedCategories = CATEGORIES.filter(c =>
+  const usedBuiltin = CATEGORIES.filter(c =>
     notDeleted.some(e => (rows[e.id]?.category ?? e.category) === c.value),
   );
+  const usedUserCats = userCategories
+    .filter(c => notDeleted.some(e => (rows[e.id]?.category ?? e.category) === c.value))
+    .map(c => ({
+      value: c.value,
+      label: c.label,
+      icon: c.icon,
+      darkBg: `rgba(${parseInt(c.color.slice(1,3),16)},${parseInt(c.color.slice(3,5),16)},${parseInt(c.color.slice(5,7),16)},0.14)`,
+      darkText: c.color,
+    }));
+  const usedCategories = [...usedBuiltin, ...usedUserCats];
 
   const activeFilters = [
     categoryFilter !== 'all',
@@ -404,10 +433,10 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
     const isEditingDesc = editingDescription === expense.id;
     const isIncome      = expense.is_income ?? false;
     const isLowConf     = row.confidence === 'low' && !isIncome;
-    const catBg         = isIncome ? 'rgba(16,185,129,0.12)' : categoryDarkBg(row.category);
-    const catText       = isIncome ? '#34d399' : categoryDarkText(row.category);
-    const label         = isIncome ? 'Entrata' : categoryLabel(row.category);
-    const icon          = isIncome ? '↑' : categoryIcon(row.category);
+    const catBg         = isIncome ? 'rgba(16,185,129,0.12)' : categoryDarkBg(row.category, userCategories);
+    const catText       = isIncome ? '#34d399' : categoryDarkText(row.category, userCategories);
+    const label         = isIncome ? 'Entrata' : categoryLabel(row.category, userCategories);
+    const icon          = isIncome ? '↑' : categoryIcon(row.category, userCategories);
     const currentDesc   = row.description;
 
     return (
@@ -469,6 +498,9 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
               onBlur={() => setEditingCategory(null)}
             >
               {CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
+              ))}
+              {userCategories.map(c => (
                 <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
               ))}
             </select>
@@ -769,7 +801,7 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>
-                    {row?.description ?? categoryLabel(row?.category ?? exp.category)}
+                    {row?.description ?? categoryLabel(row?.category ?? exp.category, userCategories)}
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
                     {fmt(Number(exp.amount))} · {new Date(exp.expense_date + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}
