@@ -13,10 +13,17 @@ export async function PATCH(
   const body = await request.json() as {
     category?: string;
     is_shared?: boolean;
+    description?: string;
+    notes?: string | null;
   };
 
   // Almeno un campo da aggiornare
-  if (body.category === undefined && body.is_shared === undefined) {
+  if (
+    body.category === undefined &&
+    body.is_shared === undefined &&
+    body.description === undefined &&
+    body.notes === undefined
+  ) {
     return NextResponse.json({ error: 'Nessun campo da aggiornare' }, { status: 400 });
   }
 
@@ -27,6 +34,8 @@ export async function PATCH(
     updatePayload.category = body.category;
     updatePayload.category_confidence = 'high';
   }
+  if (body.description !== undefined) updatePayload.description = body.description;
+  if (body.notes !== undefined) updatePayload.notes = body.notes;
 
   if (body.is_shared !== undefined) {
     updatePayload.is_shared = body.is_shared;

@@ -103,21 +103,21 @@ export default function Sidebar() {
 
       {/* Settings in fondo */}
       <div className="px-2">
-        <button
-          className="flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"
-          style={{ color: 'var(--text-3)' }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-            (e.currentTarget as HTMLElement).style.color = 'var(--text-2)';
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = 'transparent';
-            (e.currentTarget as HTMLElement).style.color = 'var(--text-3)';
-          }}
-        >
-          <Settings size={16} strokeWidth={1.8} />
-          <span className="text-sm font-medium">Impostazioni</span>
-        </button>
+        {(() => {
+          const active = pathname === '/settings';
+          return (
+            <Link
+              href="/settings"
+              className="flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"
+              style={active ? { background: 'rgba(16,185,129,0.12)', color: 'var(--brand-light)' } : { color: 'var(--text-3)' }}
+              onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; } }}
+              onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'; } }}
+            >
+              <Settings size={16} strokeWidth={active ? 2.2 : 1.8} />
+              <span className="text-sm font-medium">Impostazioni</span>
+            </Link>
+          );
+        })()}
       </div>
     </aside>
   );
