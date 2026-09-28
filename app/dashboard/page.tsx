@@ -2,11 +2,13 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabaseServer';
+import { syncDriveForUser } from '@/lib/drive-sync';
 import Sidebar from '@/components/Sidebar';
 import LogoutButton from '@/components/LogoutButton';
 import ExpenseForm from '@/components/ExpenseForm';
 import AnimatedExpenseList from '@/components/AnimatedExpenseList';
 import DashboardStats from '@/components/DashboardStats';
+import DriveSyncBanner from '@/components/DriveSyncBanner';
 
 function parseMonthParam(param: string | undefined): { year: number; month: number } {
   if (param && /^\d{4}-\d{2}$/.test(param)) {
@@ -36,6 +38,9 @@ export default async function DashboardPage({
   await supabase
     .from('profiles')
     .upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true });
+
+  // Sync automatico da Drive (incrementale, solo file nuovi)
+  const driveSync = await syncDriveForUser().catch(() => null);
 
   const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
   const lastDay  = new Date(year, month + 1, 0).toISOString().split('T')[0];
@@ -158,6 +163,9 @@ export default async function DashboardPage({
         </header>
 
         <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
+          {driveSync && !driveSync.skipped && driveSync.imported > 0 && (
+            <DriveSyncBanner imported={driveSync.imported} files={driveSync.files} />
+          )}
           <DashboardStats
             totalMonth={totalMonth}
             incomeMonth={incomeMonth}

@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import DriveStatus from '@/components/DriveStatus';
 import Papa from 'papaparse';
-import { Upload, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2, Sparkles } from 'lucide-react';
+import { Upload, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2, Sparkles, Braces } from 'lucide-react';
 import {
   decodeBuffer,
   headersFingerprint,
@@ -15,6 +15,7 @@ import {
   type ParsedRow,
 } from '@/lib/csv-parser';
 import { parseXlsxBuffer } from '@/lib/xlsx-parser';
+import { parseNucleoJson } from '@/lib/json-parser';
 
 type Step = 'upload' | 'mapping' | 'preview' | 'importing' | 'done';
 type ColRole = '' | 'date' | 'amount' | 'debit' | 'credit' | 'description' | 'type';
@@ -67,7 +68,28 @@ const ROLE_BORDER: Record<ColRole, string> = {
   type: 'rgba(251,191,36,0.35)',
 };
 
+type ImportMode = 'csv' | 'json';
+
+interface JsonImportRow {
+  date: string;
+  amount: number;
+  description?: string;
+  isIncome?: boolean;
+}
+
+function parseJsonImport(text: string): {
+  valid: Extract<ParsedRow, { ok: true }>[];
+  errors: string[];
+} {
+  const { valid: rows, errors } = parseNucleoJson(text);
+  const valid = rows.map((r, i) => ({ ok: true as const, rawIndex: i, ...r }));
+  return { valid, errors };
+}
+
 export default function ImportPage() {
+  const [importMode, setImportMode] = useState<ImportMode>('csv');
+  const [jsonText, setJsonText] = useState('');
+  const [jsonErrors, setJsonErrors] = useState<string[]>([]);
   const [step, setStep] = useState<Step>('upload');
   const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
   const [columnMap, setColumnMap] = useState<Partial<ColumnMap>>({});
@@ -83,6 +105,7 @@ export default function ImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const jsonFileRef = useRef<HTMLInputElement>(null);
 
   // ── Anteprima live nel mapping step ─────────────────────────────────────────
 
@@ -316,6 +339,38 @@ export default function ImportPage() {
     }
   }
 
+  // ── JSON import ──────────────────────────────────────────────────────────────
+
+  function handleJsonLoad() {
+    setJsonErrors([]);
+    const { valid, errors } = parseJsonImport(jsonText);
+    if (errors.length > 0 && valid.length === 0) {
+      setJsonErrors(errors);
+      return;
+    }
+    if (valid.length === 0) {
+      setJsonErrors(['Nessuna riga valida trovata nel JSON.']);
+      return;
+    }
+    setValidRows(valid);
+    setInvalidRows([]);
+    setJsonErrors(errors); // mostra eventuali errori parziali
+    setStep('preview');
+  }
+
+  async function handleJsonFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setJsonText(text);
+      setJsonErrors([]);
+    } catch {
+      setJsonErrors(['Impossibile leggere il file.']);
+    }
+    if (jsonFileRef.current) jsonFileRef.current.value = '';
+  }
+
   function reset() {
     setStep('upload');
     setParsedFile(null);
@@ -328,7 +383,10 @@ export default function ImportPage() {
     setError(null);
     setShowDiscarded(false);
     setAiReasoning(null);
+    setJsonText('');
+    setJsonErrors([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (jsonFileRef.current) jsonFileRef.current.value = '';
   }
 
   const isReadyToSave = !!(
@@ -369,27 +427,113 @@ export default function ImportPage() {
         {step === 'upload' && (
           <div className="card p-8 anim-scale max-w-2xl mx-auto">
             <h1 className="text-base font-semibold text-slate-200 mb-2">Importa estratto conto</h1>
-            <p className="text-xs text-slate-500 mb-6">
-              Carica un file CSV o Excel esportato dalla tua banca.
-            </p>
-            <div
-              onDragOver={e => { e.preventDefault(); setDragging(true); }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all duration-200 py-12"
-              style={{
-                border: `2px dashed ${dragging ? 'var(--brand-500)' : 'var(--dark-600)'}`,
-                background: dragging ? 'rgba(16,185,129,0.05)' : 'var(--dark-700)',
-              }}
-            >
-              <Upload size={24} className="text-slate-600" />
-              <div className="text-center">
-                <p className="text-sm text-slate-400">Trascina un file CSV o Excel qui</p>
-                <p className="text-xs text-slate-600 mt-1">oppure clicca per selezionare · .csv, .xlsx</p>
-              </div>
+
+            {/* Tab selector */}
+            <div className="flex mb-6 rounded-xl overflow-hidden" style={{ border: '1px solid var(--dark-600)' }}>
+              <button
+                onClick={() => setImportMode('csv')}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors"
+                style={{
+                  background: importMode === 'csv' ? 'var(--dark-700)' : 'transparent',
+                  color: importMode === 'csv' ? 'var(--text-1)' : 'var(--text-3)',
+                  borderRight: '1px solid var(--dark-600)',
+                }}
+              >
+                <Upload size={14} /> CSV / Excel
+              </button>
+              <button
+                onClick={() => setImportMode('json')}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors"
+                style={{
+                  background: importMode === 'json' ? 'var(--dark-700)' : 'transparent',
+                  color: importMode === 'json' ? 'var(--text-1)' : 'var(--text-3)',
+                }}
+              >
+                <Braces size={14} /> JSON
+              </button>
             </div>
-            <input ref={fileInputRef} type="file" accept=".csv,text/csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
+
+            {/* CSV tab */}
+            {importMode === 'csv' && (
+              <>
+                <p className="text-xs text-slate-500 mb-4">
+                  Carica un file CSV o Excel esportato dalla tua banca.
+                </p>
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all duration-200 py-12"
+                  style={{
+                    border: `2px dashed ${dragging ? 'var(--brand-500)' : 'var(--dark-600)'}`,
+                    background: dragging ? 'rgba(16,185,129,0.05)' : 'var(--dark-700)',
+                  }}
+                >
+                  <Upload size={24} className="text-slate-600" />
+                  <div className="text-center">
+                    <p className="text-sm text-slate-400">Trascina un file CSV o Excel qui</p>
+                    <p className="text-xs text-slate-600 mt-1">oppure clicca per selezionare · .csv, .xlsx</p>
+                  </div>
+                </div>
+                <input ref={fileInputRef} type="file" accept=".csv,text/csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
+              </>
+            )}
+
+            {/* JSON tab */}
+            {importMode === 'json' && (
+              <>
+                <p className="text-xs text-slate-500 mb-4">
+                  Incolla o carica un file JSON con le tue transazioni.
+                </p>
+                <pre
+                  className="text-[11px] rounded-xl px-4 py-3 mb-4 overflow-x-auto"
+                  style={{ background: 'var(--dark-700)', border: '1px solid var(--dark-600)', color: '#a78bfa' }}
+                >{`[
+  { "data": "2026-04-02", "descrizione": "Supermercato", "importo": -10, "tipo": "Addebito" },
+  { "data": "2026-04-03", "descrizione": "Bonifico",     "importo": 1308, "tipo": "Accredito" }
+]`}</pre>
+                <p className="text-[10px] text-slate-600 mb-4">
+                  Campi extra (es. <code>mese</code>, <code>gmailId</code>) vengono ignorati automaticamente.
+                </p>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <button
+                    onClick={() => jsonFileRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-400 transition-colors hover:text-slate-200"
+                    style={{ border: '1px solid var(--dark-600)' }}
+                  >
+                    <Upload size={12} /> Carica file .json
+                  </button>
+                  <input ref={jsonFileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleJsonFileChange} />
+                  <span className="text-xs text-slate-600">oppure incolla qui sotto</span>
+                </div>
+
+                <textarea
+                  value={jsonText}
+                  onChange={e => { setJsonText(e.target.value); setJsonErrors([]); }}
+                  placeholder={'[\n  { "date": "2024-01-15", "amount": 45.80, "description": "...", "isIncome": false }\n]'}
+                  rows={8}
+                  className="input w-full px-3 py-2.5 text-xs font-mono resize-y"
+                  style={{ minHeight: 140 }}
+                />
+
+                {jsonErrors.length > 0 && (
+                  <div className="mt-3 px-4 py-3 rounded-xl text-xs text-red-400 flex flex-col gap-1" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)' }}>
+                    {jsonErrors.slice(0, 5).map((e, i) => <span key={i}>{e}</span>)}
+                    {jsonErrors.length > 5 && <span className="text-slate-500">…e altri {jsonErrors.length - 5} errori</span>}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleJsonLoad}
+                  disabled={!jsonText.trim()}
+                  className="btn-primary w-full mt-4 py-2.5 text-sm"
+                >
+                  Valida e visualizza anteprima
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -684,13 +828,13 @@ export default function ImportPage() {
         )}
 
         {/* ── Preview ────────────────────────────────────────────────────────── */}
-        {step === 'preview' && parsedFile && (
+        {step === 'preview' && (
           <div className="flex flex-col gap-4 anim-scale max-w-2xl mx-auto">
             <div className="card p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-semibold text-slate-200">Anteprima importazione</h2>
                 <span className="text-xs text-slate-500">
-                  {parsedFile.records.length} righe ·{' '}
+                  {parsedFile ? parsedFile.records.length : validRows.length} righe ·{' '}
                   <span className="text-emerald-400">{validRows.length} valide</span>
                   {invalidRows.length > 0 && <> · <span className="text-amber-400">{invalidRows.length} scartate</span></>}
                 </span>
@@ -752,8 +896,12 @@ export default function ImportPage() {
             )}
 
             <div className="flex gap-3">
-              <button onClick={() => setStep('mapping')} className="px-4 py-2.5 text-sm text-slate-400 rounded-lg transition-colors hover:text-slate-200" style={{ border: '1px solid var(--dark-600)' }}>
-                Modifica mappatura
+              <button
+                onClick={() => importMode === 'json' ? setStep('upload') : setStep('mapping')}
+                className="px-4 py-2.5 text-sm text-slate-400 rounded-lg transition-colors hover:text-slate-200"
+                style={{ border: '1px solid var(--dark-600)' }}
+              >
+                {importMode === 'json' ? 'Modifica JSON' : 'Modifica mappatura'}
               </button>
               <button onClick={handleImport} disabled={validRows.length === 0} className="btn-primary flex-1 py-2.5 text-sm">
                 {(() => {
