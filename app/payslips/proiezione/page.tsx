@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabaseServer';
@@ -51,7 +51,7 @@ export default async function ProiezionePage() {
           <span className="text-sm font-semibold text-slate-300">Proiezione TFR</span>
         </header>
 
-        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
+        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full mx-auto">
           <TfrProjectionClient
             currentTfr={currentTfr}
             monthlyAccrual={monthlyAccrual}

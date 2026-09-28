@@ -170,7 +170,7 @@ export default async function DashboardPage({
           </div>
         </header>
 
-        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
+        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full mx-auto">
           {driveSync && !driveSync.skipped && driveSync.imported > 0 && (
             <DriveSyncBanner imported={driveSync.imported} files={driveSync.files} recategorized={driveSync.recategorized} />
           )}

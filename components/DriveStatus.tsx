@@ -25,16 +25,24 @@ export default function DriveStatus() {
       .catch(() => setState({ isConnected: false, hasFolderId: false, lastSyncedAt: null }));
   }, []);
 
-  function extractFolderId(url: string): string | null {
-    const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  function extractFileId(url: string): string | null {
+    // https://drive.google.com/file/d/{id}/view
+    let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
     if (m) return m[1];
+    // https://drive.google.com/open?id={id}
+    m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    // https://drive.google.com/drive/folders/{id} — vecchio comportamento cartella
+    m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    // ID grezzo
     if (/^[a-zA-Z0-9_-]{10,}$/.test(url.trim())) return url.trim();
     return null;
   }
 
   async function handleSave() {
-    const folderId = extractFolderId(folderUrl.trim());
-    if (!folderId) { setErr('URL non valido — incolla il link della cartella Drive'); return; }
+    const folderId = extractFileId(folderUrl.trim());
+    if (!folderId) { setErr('URL non valido — incolla il link del file Drive (tasto destro → Ottieni link)'); return; }
     setSaving(true); setErr('');
     const res = await fetch('/api/profile/drive-folder', {
       method: 'PATCH',
@@ -75,7 +83,7 @@ export default function DriveStatus() {
         <div>
           <p className="text-xs font-semibold text-slate-300">Drive connesso — scegli la cartella</p>
           <p className="text-[10px] text-slate-500 mt-0.5">
-            Incolla il link della cartella Drive con i tuoi export bancari (CSV/Excel)
+            Incolla il link del file JSON su Drive (tasto destro sul file → Ottieni link)
           </p>
         </div>
         <div className="flex gap-2">
@@ -83,7 +91,7 @@ export default function DriveStatus() {
             type="text"
             value={folderUrl}
             onChange={e => setFolderUrl(e.target.value)}
-            placeholder="https://drive.google.com/drive/folders/..."
+            placeholder="https://drive.google.com/file/d/..."
             className="input flex-1 px-3 py-2 text-xs"
           />
           <button

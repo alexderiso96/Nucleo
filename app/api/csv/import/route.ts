@@ -63,17 +63,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // --- Ricategorizza i duplicati con category = 'altro' ---
+  // --- Ricategorizza i duplicati con category = 'altro' o confidence = 'low' ---
   let recategorized = 0;
+  console.log(`[import] duplicateRows=${duplicateRows.length} toInsert=${toInsert.length}`);
+
   if (duplicateRows.length > 0) {
     const dupDates = [...new Set(duplicateRows.map(r => r.date))];
-    const { data: uncatExisting } = await supabase
+    console.log(`[import] checking ${dupDates.length} date(s) for uncategorized duplicates`);
+
+    // No source filter — cattura spese da qualsiasi provenienza
+    const { data: uncatExisting, error: uncatErr } = await supabase
       .from('expenses')
-      .select('id, description, expense_date, amount')
+      .select('id, description, expense_date, amount, category, category_confidence')
       .eq('user_id', user.id)
-      .eq('category', 'altro')
-      .eq('source', 'csv')
-      .in('expense_date', dupDates);
+      .in('expense_date', dupDates)
+      .or('category.eq.altro,category_confidence.eq.low');
+
+    if (uncatErr) console.error('[import] uncatExisting query error:', uncatErr.message);
+    console.log(`[import] uncatExisting (altro/low) count=${uncatExisting?.length ?? 0}`);
 
     const toRecat = (uncatExisting ?? []).filter(e =>
       duplicateRows.some(r =>
@@ -81,20 +88,44 @@ export async function POST(request: NextRequest) {
         Math.abs(r.amount - Number(e.amount)) < 0.005,
       ),
     );
+    console.log(`[import] toRecat (matched to batch) count=${toRecat.length}`);
 
     if (toRecat.length > 0) {
       const descs = toRecat.map(e => e.description ?? '');
-      const aiRes = await categorizeWithAI(descs, userCats).catch(() => null);
+      let aiRes: Awaited<ReturnType<typeof categorizeWithAI>> | null = null;
+      try {
+        aiRes = await categorizeWithAI(descs, userCats);
+        console.log(`[import] AI returned ${aiRes.length} results`);
+      } catch (err) {
+        console.error('[import] categorizeWithAI error:', err instanceof Error ? err.message : String(err));
+      }
+
       if (aiRes) {
-        const resolved = await resolveAICategories(aiRes, user.id).catch(() => null);
+        let resolved: string[] | null = null;
+        try {
+          resolved = await resolveAICategories(aiRes, user.id);
+          console.log(`[import] resolved categories:`, resolved);
+        } catch (err) {
+          console.error('[import] resolveAICategories error:', err instanceof Error ? err.message : String(err));
+        }
+
         if (resolved) {
           for (let k = 0; k < toRecat.length; k++) {
-            if (resolved[k] !== 'altro') {
-              await supabase
+            const newCat = resolved[k];
+            const oldCat = toRecat[k].category;
+            if (newCat !== 'altro' && newCat !== oldCat) {
+              const { error: updErr } = await supabase
                 .from('expenses')
-                .update({ category: resolved[k], category_confidence: 'ai' })
+                .update({ category: newCat, category_confidence: 'ai' })
                 .eq('id', toRecat[k].id);
-              recategorized++;
+              if (updErr) {
+                console.error(`[import] update error for id=${toRecat[k].id}:`, updErr.message);
+              } else {
+                console.log(`[import] recategorized id=${toRecat[k].id} ${oldCat} → ${newCat}`);
+                recategorized++;
+              }
+            } else {
+              console.log(`[import] skipped id=${toRecat[k].id} (new=${newCat} old=${oldCat})`);
             }
           }
         }

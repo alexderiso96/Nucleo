@@ -106,7 +106,7 @@ export default function StatistichePage() {
           <h2 className="text-sm font-semibold text-slate-200">Statistiche</h2>
         </header>
 
-        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
+        <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full mx-auto">
 
           {/* Filtri */}
           <div className="card p-4 flex flex-col gap-3">

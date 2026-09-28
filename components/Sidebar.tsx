@@ -26,9 +26,9 @@ export default function Sidebar() {
     <aside
       className="flex flex-col py-4 gap-1 shrink-0"
       style={{
-        width: '200px',
-        background: 'var(--dark-800)',
-        borderRight: '1px solid var(--dark-600)',
+        width: '220px',
+        background: 'var(--surface-1)',
+        borderRight: '1px solid var(--border-strong)',
         height: '100vh',
         position: 'sticky',
         top: 0,
@@ -105,7 +105,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Settings in fondo */}
-      <div className="px-2 mt-auto pt-2" style={{ borderTop: '1px solid var(--dark-600)' }}>
+      <div className="px-2 mt-auto pt-2" style={{ borderTop: '1px solid var(--border-strong)' }}>
         <Link
           href="/settings"
           className="relative flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"

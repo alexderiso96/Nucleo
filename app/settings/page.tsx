@@ -73,7 +73,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-semibold text-slate-200">Impostazioni</h2>
         </header>
 
-        <main className="flex-1 px-6 py-6 max-w-xl flex flex-col gap-5">
+        <main className="flex-1 px-6 py-6 max-w-xl flex flex-col gap-5 mx-auto w-full">
 
           {/* Categorie personalizzate */}
           <div className="card p-5 flex flex-col gap-4">

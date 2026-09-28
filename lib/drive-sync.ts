@@ -39,29 +39,53 @@ export async function syncDriveForUser(): Promise<SyncResult> {
     .eq('id', user.id)
     .single();
 
+  // drive_folder_id contiene l'ID del file JSON (riutilizziamo la colonna)
   if (!profile?.drive_refresh_token || !profile?.drive_folder_id)
     return { skipped: true, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
 
   const accessToken = await getAccessToken(profile.drive_refresh_token);
   if (!accessToken) return { skipped: true, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
 
-  const sinceClause = profile.drive_last_synced_at
-    ? ` and modifiedTime > '${profile.drive_last_synced_at}'`
-    : '';
-  const q = `'${profile.drive_folder_id}' in parents and mimeType='application/json' and trashed=false${sinceClause}`;
-
-  const listRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  const listData = await listRes.json() as { files?: { id: string; name: string }[] };
-  const files = listData.files ?? [];
-
+  const fileId = profile.drive_folder_id;
   const now = new Date().toISOString();
 
-  if (files.length === 0) {
+  // Controlla metadata del file per vedere se è stato modificato dall'ultima sync
+  const metaRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,modifiedTime`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!metaRes.ok) {
+    console.error('[drive-sync] metadata fetch failed:', metaRes.status);
+    return { skipped: true, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
+  }
+  const meta = await metaRes.json() as { id: string; name: string; modifiedTime: string };
+  console.log(`[drive-sync] file="${meta.name}" modifiedTime=${meta.modifiedTime} lastSync=${profile.drive_last_synced_at ?? 'mai'}`);
+
+  // Se il file non è stato modificato dall'ultima sync, salta
+  if (
+    profile.drive_last_synced_at &&
+    new Date(meta.modifiedTime) <= new Date(profile.drive_last_synced_at)
+  ) {
+    console.log('[drive-sync] file non modificato, skip');
+    return { skipped: true, files: 1, imported: 0, duplicates: 0, recategorized: 0 };
+  }
+
+  // Scarica il contenuto del file
+  const fileRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!fileRes.ok) {
+    console.error('[drive-sync] file download failed:', fileRes.status);
+    return { skipped: true, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
+  }
+
+  const text = await fileRes.text();
+  const { valid, errors } = parseNucleoJson(text);
+  console.log(`[drive-sync] parsed: valid=${valid.length} errors=${errors.length}`);
+  if (valid.length === 0) {
     await supabase.from('profiles').update({ drive_last_synced_at: now }).eq('id', user.id);
-    return { skipped: false, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
+    return { skipped: false, files: 1, imported: 0, duplicates: 0, recategorized: 0 };
   }
 
   const [{ data: rulesData }, { data: userCatsData }] = await Promise.all([
@@ -71,89 +95,93 @@ export async function syncDriveForUser(): Promise<SyncResult> {
   const merchantRules: MerchantRule[] = rulesData ?? [];
   const userCats = (userCatsData ?? []) as { value: string; label: string }[];
 
+  const dates = valid.map(r => r.date).sort();
+  const { data: existing } = await supabase
+    .from('expenses')
+    .select('expense_date, amount')
+    .eq('user_id', user.id)
+    .eq('source', 'csv')
+    .gte('expense_date', dates[0])
+    .lte('expense_date', dates[dates.length - 1]);
+
+  const existingKeys = new Set<string>(
+    (existing ?? []).map(e => `${e.expense_date}|${Number(e.amount).toFixed(2)}`),
+  );
+
+  const toInsert: typeof valid = [];
+  const duplicateRows: typeof valid = [];
+
+  for (const row of valid) {
+    const key = `${row.date}|${row.amount.toFixed(2)}`;
+    if (existingKeys.has(key)) {
+      if (!row.isIncome) duplicateRows.push(row);
+    } else {
+      toInsert.push(row);
+      existingKeys.add(key);
+    }
+  }
+
   let totalImported = 0;
-  let totalDuplicates = 0;
+  let totalDuplicates = duplicateRows.length;
   let totalRecategorized = 0;
 
-  for (const file of files) {
-    const fileRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
-    if (!fileRes.ok) continue;
-
-    const text = await fileRes.text();
-    const { valid } = parseNucleoJson(text);
-    if (valid.length === 0) continue;
-
-    const dates = valid.map(r => r.date).sort();
-    const { data: existing } = await supabase
+  // --- Ricategorizza i duplicati con category = 'altro' o confidence = 'low' ---
+  console.log(`[drive-sync] duplicates=${duplicateRows.length} toInsert=${toInsert.length}`);
+  if (duplicateRows.length > 0) {
+    const dupDates = [...new Set(duplicateRows.map(r => r.date))];
+    const { data: uncatExisting, error: uncatErr } = await supabase
       .from('expenses')
-      .select('expense_date, amount')
+      .select('id, description, expense_date, amount, category, category_confidence')
       .eq('user_id', user.id)
-      .eq('source', 'csv')
-      .gte('expense_date', dates[0])
-      .lte('expense_date', dates[dates.length - 1]);
+      .in('expense_date', dupDates)
+      .or('category.eq.altro,category_confidence.eq.low');
 
-    const existingKeys = new Set<string>(
-      (existing ?? []).map(e => `${e.expense_date}|${Number(e.amount).toFixed(2)}`),
+    if (uncatErr) console.error('[drive-sync] uncatExisting error:', uncatErr.message);
+    console.log(`[drive-sync] uncatExisting (altro/low) count=${uncatExisting?.length ?? 0}`);
+
+    const toRecat = (uncatExisting ?? []).filter(e =>
+      duplicateRows.some(r =>
+        r.date === e.expense_date &&
+        Math.abs(r.amount - Number(e.amount)) < 0.005,
+      ),
     );
+    console.log(`[drive-sync] toRecat count=${toRecat.length}`);
 
-    const toInsert: typeof valid = [];
-    const duplicateRows: typeof valid = [];
-
-    for (const row of valid) {
-      const key = `${row.date}|${row.amount.toFixed(2)}`;
-      if (existingKeys.has(key)) {
-        if (!row.isIncome) duplicateRows.push(row);
-        totalDuplicates++;
-      } else {
-        toInsert.push(row);
-        existingKeys.add(key);
+    if (toRecat.length > 0) {
+      const descs = toRecat.map(e => e.description ?? '');
+      let aiRes: Awaited<ReturnType<typeof categorizeWithAI>> | null = null;
+      try {
+        aiRes = await categorizeWithAI(descs, userCats);
+      } catch (err) {
+        console.error('[drive-sync] categorizeWithAI error:', err instanceof Error ? err.message : String(err));
       }
-    }
-
-    // --- Ricategorizza i duplicati con category = 'altro' ---
-    if (duplicateRows.length > 0) {
-      const dupDates = [...new Set(duplicateRows.map(r => r.date))];
-      const { data: uncatExisting } = await supabase
-        .from('expenses')
-        .select('id, description, expense_date, amount')
-        .eq('user_id', user.id)
-        .eq('category', 'altro')
-        .eq('source', 'csv')
-        .in('expense_date', dupDates);
-
-      const toRecat = (uncatExisting ?? []).filter(e =>
-        duplicateRows.some(r =>
-          r.date === e.expense_date &&
-          Math.abs(r.amount - Number(e.amount)) < 0.005,
-        ),
-      );
-
-      if (toRecat.length > 0) {
-        const descs = toRecat.map(e => e.description ?? '');
-        const aiRes = await categorizeWithAI(descs, userCats).catch(() => null);
-        if (aiRes) {
-          const resolved = await resolveAICategories(aiRes, user.id).catch(() => null);
-          if (resolved) {
-            for (let k = 0; k < toRecat.length; k++) {
-              if (resolved[k] !== 'altro') {
-                await supabase
-                  .from('expenses')
-                  .update({ category: resolved[k], category_confidence: 'ai' })
-                  .eq('id', toRecat[k].id);
-                totalRecategorized++;
-              }
+      if (aiRes) {
+        let resolved: string[] | null = null;
+        try {
+          resolved = await resolveAICategories(aiRes, user.id);
+        } catch (err) {
+          console.error('[drive-sync] resolveAICategories error:', err instanceof Error ? err.message : String(err));
+        }
+        if (resolved) {
+          for (let k = 0; k < toRecat.length; k++) {
+            const newCat = resolved[k];
+            const oldCat = toRecat[k].category;
+            if (newCat !== 'altro' && newCat !== oldCat) {
+              await supabase
+                .from('expenses')
+                .update({ category: newCat, category_confidence: 'ai' })
+                .eq('id', toRecat[k].id);
+              totalRecategorized++;
+              console.log(`[drive-sync] recategorized id=${toRecat[k].id} ${oldCat} → ${newCat}`);
             }
           }
         }
       }
     }
+  }
 
-    if (toInsert.length === 0) continue;
-
-    // --- Pre-categorizzazione + batch AI ---
+  // --- Pre-categorizzazione + batch AI per le nuove righe ---
+  if (toInsert.length > 0) {
     type CatResult = { category: string; confidence: string };
     const preCat: CatResult[] = toInsert.map(row => {
       if (row.isIncome) return { category: 'income', confidence: 'high' };
@@ -166,13 +194,20 @@ export async function syncDriveForUser(): Promise<SyncResult> {
 
     if (lowIdxs.length > 0) {
       const descs = lowIdxs.map(i => toInsert[i].description ?? '');
-      const aiRes = await categorizeWithAI(descs, userCats).catch(() => null);
+      let aiRes: Awaited<ReturnType<typeof categorizeWithAI>> | null = null;
+      try {
+        aiRes = await categorizeWithAI(descs, userCats);
+      } catch (err) {
+        console.error('[drive-sync] AI categorize new rows error:', err instanceof Error ? err.message : String(err));
+      }
       if (aiRes) {
-        const resolved = await resolveAICategories(aiRes, user.id).catch(() => null);
-        if (resolved) {
+        try {
+          const resolved = await resolveAICategories(aiRes, user.id);
           for (let k = 0; k < lowIdxs.length; k++) {
             preCat[lowIdxs[k]] = { category: resolved[k], confidence: 'low' };
           }
+        } catch (err) {
+          console.error('[drive-sync] resolveAICategories new rows error:', err instanceof Error ? err.message : String(err));
         }
       }
     }
@@ -196,14 +231,16 @@ export async function syncDriveForUser(): Promise<SyncResult> {
       });
       const { error } = await supabase.from('expenses').insert(chunk);
       if (!error) totalImported += chunk.length;
+      else console.error('[drive-sync] insert error:', error.message);
     }
   }
 
   await supabase.from('profiles').update({ drive_last_synced_at: now }).eq('id', user.id);
+  console.log(`[drive-sync] done: imported=${totalImported} duplicates=${totalDuplicates} recategorized=${totalRecategorized}`);
 
   return {
     skipped: false,
-    files: files.length,
+    files: 1,
     imported: totalImported,
     duplicates: totalDuplicates,
     recategorized: totalRecategorized,

@@ -1,35 +1,35 @@
 @import "tailwindcss";
 
-/* ── Palette Nucleo v3 — Slate Premium + Emerald ─── */
+/* ── Palette Nucleo v4 — Slate + Emerald ──────────── */
 :root {
-  /* Backgrounds zinc scale */
-  --bg:         #09090b;   /* zinc-950 — pagina */
-  --surface-1:  #18181b;   /* zinc-900 — card */
-  --surface-2:  #27272a;   /* zinc-800 — elevated / input */
-  --surface-3:  #3f3f46;   /* zinc-700 — active / selected */
+  /* Backgrounds slate scale — più caldi e meno opprimenti di zinc-950 */
+  --bg:         #0f172a;   /* slate-900 — pagina */
+  --surface-1:  #1e293b;   /* slate-800 — card */
+  --surface-2:  #334155;   /* slate-700 — elevated / input */
+  --surface-3:  #475569;   /* slate-600 — active / selected */
 
-  /* Borders solid (non rgba) per contrasto reale */
-  --border:        #27272a;
-  --border-strong: #3f3f46;
+  /* Borders */
+  --border:        #334155;   /* slate-700 — bordi card */
+  --border-strong: #475569;   /* slate-600 — divisori header/sidebar */
 
   /* Text */
-  --text-1: #fafafa;    /* zinc-50 */
-  --text-2: #a1a1aa;    /* zinc-400 */
-  --text-3: #52525b;    /* zinc-600 */
+  --text-1: #f1f5f9;    /* slate-100 */
+  --text-2: #94a3b8;    /* slate-400 */
+  --text-3: #64748b;    /* slate-500 */
 
   /* Semantici finanziari */
-  --income:  #34d399;   /* emerald-400 — entrate */
-  --expense: #fb7185;   /* rose-400   — uscite   */
+  --income:  #34d399;   /* emerald-400 */
+  --expense: #fb7185;   /* rose-400    */
   --warning: #fbbf24;
   --info:    #38bdf8;
 
   /* Brand emerald */
-  --brand:       #10b981;   /* emerald-500 */
-  --brand-light: #34d399;   /* emerald-400 */
-  --brand-dark:  #059669;   /* emerald-600 */
-  --brand-dim:   rgba(16,185,129,0.12);
+  --brand:       #10b981;
+  --brand-light: #34d399;
+  --brand-dark:  #059669;
+  --brand-dim:   rgba(16,185,129,0.14);
 
-  /* Retrocompatibilità variabili vecchie */
+  /* Retrocompatibilità */
   --dark-900: var(--bg);
   --dark-800: var(--surface-1);
   --dark-700: var(--surface-2);
@@ -50,7 +50,7 @@ body {
   position: relative;
 }
 
-/* Aurora emerald leggero */
+/* Aurora — leggermente più visibile sul nuovo bg */
 body::before,
 body::after {
   content: '';
@@ -62,12 +62,12 @@ body::after {
 body::before {
   top: -300px; left: -300px;
   width: 700px; height: 700px;
-  background: radial-gradient(circle, rgba(16,185,129,0.05) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 65%);
 }
 body::after {
   bottom: -300px; right: -300px;
   width: 600px; height: 600px;
-  background: radial-gradient(circle, rgba(16,185,129,0.03) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(56,189,248,0.04) 0%, transparent 65%);
 }
 
 #__next, main, header, aside { position: relative; z-index: 1; }
@@ -115,7 +115,7 @@ input:-webkit-autofill:focus {
 }
 .card:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 0 0 1px var(--border-strong), 0 8px 32px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
 }
 
 /* ── Btn primary ────────────────────────────────── */
@@ -164,6 +164,22 @@ input:-webkit-autofill:focus {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+/* ── Layout centrato — content-area ─────────────── */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.page-main {
+  flex: 1;
+  width: 100%;
+  padding: 1.5rem;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ── no-print ───────────────────────────────────── */
