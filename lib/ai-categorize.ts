@@ -59,15 +59,18 @@ Esempio: ["alimentari",{"isNew":true,"value":"assicurazione","label":"Assicurazi
 Nessuna spiegazione, solo l'array JSON.`;
 }
 
-function parseResult(text: string, count: number): AICategory[] {
+function parseResult(text: string, count: number, extraValid: Set<string> = new Set()): AICategory[] {
   // Prende l'ultimo array JSON trovato — nei reasoning model la risposta finale è in fondo
   const matches = [...text.matchAll(/\[[\s\S]*?\]/g)];
   const match = matches.at(-1);
   if (!match) return Array(count).fill('altro') as string[];
+  const allValid = extraValid.size > 0
+    ? new Set([...VALID_VALUES, ...extraValid])
+    : VALID_VALUES;
   try {
     const arr = JSON.parse(match[0]) as unknown[];
     return arr.slice(0, count).map(v => {
-      if (typeof v === 'string') return VALID_VALUES.has(v) ? v : 'altro';
+      if (typeof v === 'string') return allValid.has(v) ? v : 'altro';
       if (v && typeof v === 'object') {
         const obj = v as Record<string, unknown>;
         if (obj.isNew !== true) return 'altro';
@@ -94,6 +97,7 @@ export async function categorizeWithAI(
   console.log(`[ai] categorizeWithAI count=${descriptions.length} GEMINI=${!!process.env.GEMINI_API_KEY} GROQ=${!!process.env.GROQ_API_KEY}`);
 
   const prompt = buildPrompt(descriptions, userCats);
+  const userCatValues = new Set(userCats.map(c => c.value));
 
   if (process.env.GEMINI_API_KEY) {
     try {
@@ -102,7 +106,7 @@ export async function categorizeWithAI(
       const result = await model.generateContent(prompt);
       const raw = result.response.text().trim();
       console.log('[ai] Gemini raw response (first 300):', raw.slice(0, 300));
-      const parsed = parseResult(raw, descriptions.length);
+      const parsed = parseResult(raw, descriptions.length, userCatValues);
       console.log('[ai] Gemini parsed:', parsed);
       return parsed;
     } catch (err) {
@@ -129,9 +133,15 @@ export async function categorizeWithAI(
           },
           body: JSON.stringify({
             model,
-            messages: [{ role: 'user', content: prompt }],
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a JSON API. Respond ONLY with a valid JSON array. No reasoning, no explanation, no markdown, no code blocks. Output the raw JSON array directly.',
+              },
+              { role: 'user', content: prompt },
+            ],
             temperature: 0,
-            max_tokens: 1000,
+            max_tokens: 4000,
           }),
         });
 
@@ -174,7 +184,7 @@ export async function categorizeWithAI(
           ''
         );
         console.log(`[ai] Groq model="${model}" raw (first 500):`, raw.slice(0, 500));
-        const parsed = parseResult(raw, descriptions.length);
+        const parsed = parseResult(raw, descriptions.length, userCatValues);
         console.log('[ai] Groq parsed:', parsed);
         return parsed;
       } catch (err) {
