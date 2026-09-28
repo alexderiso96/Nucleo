@@ -109,40 +109,63 @@ export async function categorizeWithAI(
   }
 
   if (process.env.GROQ_API_KEY) {
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'llama3-70b-8192',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0,
-          max_tokens: 1000,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        console.error(`[ai] Groq HTTP ${res.status}:`, errBody.slice(0, 300));
-      } else {
+    // Modelli in ordine di preferenza — saltiamo quelli rimossi automaticamente
+    const groqModels = process.env.GROQ_MODEL
+      ? [process.env.GROQ_MODEL]
+      : [
+          'openai/gpt-oss-20b',    // ottimale per categorizzazione: veloce, gratis
+          'openai/gpt-oss-120b',   // fallback più capace
+        ];
+
+    for (const model of groqModels) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0,
+            max_tokens: 1000,
+          }),
+        });
+
+        if (res.status === 400 || res.status === 404) {
+          const errBody = await res.text();
+          console.warn(`[ai] Groq model "${model}" non disponibile (${res.status}), provo il prossimo`);
+          if (errBody.includes('decommissioned') || errBody.includes('does not exist')) continue;
+          // Altro errore 400 non legato al modello
+          console.error(`[ai] Groq HTTP ${res.status}:`, errBody.slice(0, 200));
+          break;
+        }
+
+        if (!res.ok) {
+          const errBody = await res.text();
+          console.error(`[ai] Groq HTTP ${res.status}:`, errBody.slice(0, 300));
+          break;
+        }
+
         const json = await res.json() as {
           choices?: { message?: { content?: string } }[];
           error?: { message: string; type?: string };
         };
         if (json.error) {
-          console.error('[ai] Groq API error:', json.error.message, json.error.type ?? '');
-        } else {
-          const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
-          console.log('[ai] Groq raw response (first 500):', raw.slice(0, 500));
-          const parsed = parseResult(raw, descriptions.length);
-          console.log('[ai] Groq parsed:', parsed);
-          return parsed;
+          console.error('[ai] Groq API error:', json.error.message);
+          break;
         }
+
+        const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
+        console.log(`[ai] Groq model="${model}" raw (first 500):`, raw.slice(0, 500));
+        const parsed = parseResult(raw, descriptions.length);
+        console.log('[ai] Groq parsed:', parsed);
+        return parsed;
+      } catch (err) {
+        console.error(`[ai] Groq model="${model}" exception:`, err instanceof Error ? err.message : String(err));
+        break;
       }
-    } catch (err) {
-      console.error('[ai] Groq error:', err instanceof Error ? err.message : String(err));
     }
   }
 

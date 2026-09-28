@@ -114,7 +114,7 @@ async function extractWithGroq(buffer: ArrayBuffer): Promise<Record<string, unkn
   console.log('[groq] calling LLM...');
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const chat = await groq.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b',
     messages: [
       { role: 'system', content: SYSTEM_INSTRUCTION },
       { role: 'user',   content: `Testo busta paga:\n\n${fullText.slice(0, 6000)}` },
