@@ -148,16 +148,20 @@ export async function categorizeWithAI(
           break;
         }
 
-        const json = await res.json() as {
-          choices?: { message?: { content?: string } }[];
-          error?: { message: string; type?: string };
-        };
+        const bodyText = await res.text();
+        console.log(`[ai] Groq model="${model}" body (first 600):`, bodyText.slice(0, 600));
+
+        let json: { choices?: { message?: { content?: string; reasoning_content?: string } }[]; error?: { message: string; type?: string } };
+        try { json = JSON.parse(bodyText) as typeof json; }
+        catch { console.error('[ai] Groq JSON parse error'); break; }
+
         if (json.error) {
           console.error('[ai] Groq API error:', json.error.message);
           break;
         }
 
-        const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
+        const msg = json.choices?.[0]?.message;
+        const raw = (msg?.content ?? msg?.reasoning_content ?? '').trim();
         console.log(`[ai] Groq model="${model}" raw (first 500):`, raw.slice(0, 500));
         const parsed = parseResult(raw, descriptions.length);
         console.log('[ai] Groq parsed:', parsed);
