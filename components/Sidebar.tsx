@@ -8,13 +8,15 @@ import {
   FileText,
   Users,
   Settings,
+  BarChart2,
 } from 'lucide-react';
 
 const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/import',    icon: Upload,           label: 'Importa' },
-  { href: '/payslips',  icon: FileText,          label: 'Buste paga' },
-  { href: '/family',    icon: Users,             label: 'Nucleo' },
+  { href: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/statistiche', icon: BarChart2,        label: 'Statistiche' },
+  { href: '/import',      icon: Upload,           label: 'Importa' },
+  { href: '/payslips',    icon: FileText,          label: 'Buste paga' },
+  { href: '/family',      icon: Users,             label: 'Nucleo' },
 ];
 
 export default function Sidebar() {

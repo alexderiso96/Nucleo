@@ -3,6 +3,7 @@ export const runtime = 'nodejs';
 import { createClient } from '@/lib/supabaseServer';
 import { parseNucleoJson } from '@/lib/json-parser';
 import { categorizeDescription, type MerchantRule } from '@/lib/categorize';
+import { categorizeWithAI } from '@/lib/ai-categorize';
 
 export interface SyncResult {
   skipped: boolean;
@@ -97,7 +98,7 @@ export async function syncDriveForUser(): Promise<SyncResult> {
       (existing ?? []).map(e => `${e.expense_date}|${Number(e.amount).toFixed(2)}`),
     );
 
-    const toInsert = [];
+    const toInsert: typeof valid = [];
     for (const row of valid) {
       const key = `${row.date}|${row.amount.toFixed(2)}`;
       if (existingKeys.has(key)) {
@@ -109,16 +110,37 @@ export async function syncDriveForUser(): Promise<SyncResult> {
     }
 
     if (toInsert.length > 0) {
+      // Pre-categorizzazione; batch AI per le righe a bassa confidence
+      type CatResult = { category: string; confidence: string };
+      const preCat: CatResult[] = toInsert.map(row => {
+        if (row.isIncome) return { category: 'income', confidence: 'high' };
+        return categorizeDescription(row.description, merchantRules);
+      });
+
+      const lowIdxs = preCat
+        .map((c, i) => (c.confidence === 'low' ? i : -1))
+        .filter(i => i >= 0);
+
+      if (lowIdxs.length > 0) {
+        const descs = lowIdxs.map(i => toInsert[i].description ?? '');
+        const aiRes = await categorizeWithAI(descs).catch(() => null);
+        if (aiRes) {
+          for (let k = 0; k < lowIdxs.length; k++) {
+            preCat[lowIdxs[k]] = { category: aiRes[k], confidence: 'low' };
+          }
+        }
+      }
+
       const BATCH = 100;
       for (let i = 0; i < toInsert.length; i += BATCH) {
-        const chunk = toInsert.slice(i, i + BATCH).map(row => {
-          const { category, confidence } = categorizeDescription(row.description, merchantRules);
+        const chunk = toInsert.slice(i, i + BATCH).map((row, j) => {
+          const { category, confidence } = preCat[i + j];
           return {
             user_id:             user.id,
             amount:              row.amount,
             currency:            'EUR',
-            category:            row.isIncome ? 'income' : category,
-            category_confidence: row.isIncome ? 'high' : confidence,
+            category,
+            category_confidence: confidence,
             description:         row.description,
             expense_date:        row.date,
             source:              'csv',

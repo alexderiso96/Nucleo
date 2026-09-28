@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabaseServer';
 import { categorizeDescription, type MerchantRule } from '@/lib/categorize';
+import { categorizeWithAI } from '@/lib/ai-categorize';
 
 interface ImportRow {
   date: string;
@@ -64,17 +65,38 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Pre-categorizzazione con regole; raccogli le descrizioni a bassa confidence per il batch AI
+  type Categorized = { category: string; confidence: string };
+  const preCat: Categorized[] = toInsert.map(row => {
+    if (row.isIncome) return { category: 'income', confidence: 'high' };
+    return categorizeDescription(row.description, merchantRules);
+  });
+
+  const lowConfIdxs = preCat
+    .map((c, i) => (c.confidence === 'low' ? i : -1))
+    .filter(i => i >= 0);
+
+  if (lowConfIdxs.length > 0) {
+    const descs = lowConfIdxs.map(i => toInsert[i].description ?? '');
+    const aiResults = await categorizeWithAI(descs).catch(() => null);
+    if (aiResults) {
+      for (let k = 0; k < lowConfIdxs.length; k++) {
+        preCat[lowConfIdxs[k]] = { category: aiResults[k], confidence: 'low' };
+      }
+    }
+  }
+
   // Batch insert a 100 righe per volta
   const BATCH = 100;
   for (let i = 0; i < toInsert.length; i += BATCH) {
-    const chunk = toInsert.slice(i, i + BATCH).map(row => {
-      const { category, confidence } = categorizeDescription(row.description, merchantRules);
+    const chunk = toInsert.slice(i, i + BATCH).map((row, j) => {
+      const { category, confidence } = preCat[i + j];
       return {
         user_id: user.id,
         amount: row.amount,
         currency: 'EUR',
-        category: row.isIncome ? 'income' : category,
-        category_confidence: row.isIncome ? 'high' : confidence,
+        category,
+        category_confidence: confidence,
         description: row.description,
         expense_date: row.date,
         source: 'csv',
