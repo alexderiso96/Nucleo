@@ -89,6 +89,8 @@ export async function categorizeWithAI(
 ): Promise<AICategory[]> {
   if (descriptions.length === 0) return [];
 
+  console.log(`[ai] categorizeWithAI count=${descriptions.length} GEMINI=${!!process.env.GEMINI_API_KEY} GROQ=${!!process.env.GROQ_API_KEY}`);
+
   const prompt = buildPrompt(descriptions, userCats);
 
   if (process.env.GEMINI_API_KEY) {
@@ -96,8 +98,14 @@ export async function categorizeWithAI(
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
       const result = await model.generateContent(prompt);
-      return parseResult(result.response.text().trim(), descriptions.length);
-    } catch { /* fallback */ }
+      const raw = result.response.text().trim();
+      console.log('[ai] Gemini raw response (first 300):', raw.slice(0, 300));
+      const parsed = parseResult(raw, descriptions.length);
+      console.log('[ai] Gemini parsed:', parsed);
+      return parsed;
+    } catch (err) {
+      console.error('[ai] Gemini error:', err instanceof Error ? err.message : String(err));
+    }
   }
 
   if (process.env.GROQ_API_KEY) {
@@ -116,11 +124,17 @@ export async function categorizeWithAI(
         }),
       });
       const json = await res.json() as { choices?: { message?: { content?: string } }[] };
-      const text = json.choices?.[0]?.message?.content?.trim() ?? '';
-      return parseResult(text, descriptions.length);
-    } catch { /* ignore */ }
+      const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
+      console.log('[ai] Groq raw response (first 300):', raw.slice(0, 300));
+      const parsed = parseResult(raw, descriptions.length);
+      console.log('[ai] Groq parsed:', parsed);
+      return parsed;
+    } catch (err) {
+      console.error('[ai] Groq error:', err instanceof Error ? err.message : String(err));
+    }
   }
 
+  console.warn('[ai] nessuna API key configurata — fallback a tutto "altro"');
   return Array(descriptions.length).fill('altro') as string[];
 }
 
