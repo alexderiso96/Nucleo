@@ -9,6 +9,7 @@ import {
   decodeBuffer,
   headersFingerprint,
   autoDetectMapping,
+  detectSignConvention,
   parseRows,
   type ColumnMap,
   type ParsedRow,
@@ -213,7 +214,11 @@ export default function ImportPage() {
       const res = await fetch(`/api/csv/mappings?fingerprint=${encodeURIComponent(fp)}`);
       const json = await res.json() as { mapping: ColumnMap | null };
       if (json.mapping) {
-        const map = json.mapping;
+        const map = { ...json.mapping };
+        // Se colonna singola senza signFilter salvato, rileva dai dati
+        if (map.amountType === 'single' && !map.signFilter && map.amount) {
+          map.signFilter = detectSignConvention(records, map.amount);
+        }
         setColumnMap(map);
         setSourceName(map.sourceName);
         applyMapping(pf, map);
@@ -222,7 +227,7 @@ export default function ImportPage() {
       }
     } catch { /* ignora */ }
 
-    const auto = autoDetectMapping(headers);
+    const auto = autoDetectMapping(headers, records);
     setColumnMap(auto);
     setSourceName('');
     setStep('mapping');

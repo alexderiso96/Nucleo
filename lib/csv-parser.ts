@@ -67,7 +67,38 @@ function matchHeader(headers: string[], patterns: string[]): string | undefined 
   return undefined;
 }
 
-export function autoDetectMapping(headers: string[]): Partial<ColumnMap> {
+// ── isEmptyAmount ─────────────────────────────────────────────────────────────
+// Considera vuota una cella che è blank, "-", "0", "0,00", "0.00", ecc.
+
+function isEmptyAmount(s: string | undefined): boolean {
+  if (!s || s.trim() === '' || s.trim() === '-') return true;
+  const n = parseAmount(s.trim());
+  return n === null || n === 0;
+}
+
+// ── detectSignConvention ──────────────────────────────────────────────────────
+// Analizza i valori della colonna importo per capire quale segno indica un'uscita.
+
+export function detectSignConvention(
+  records: Record<string, string>[],
+  amountCol: string,
+): 'negative' | 'positive' | 'all' {
+  let hasNeg = false;
+  let hasPos = false;
+  // Scansiona tutti i record con early-exit appena trovati entrambi i segni
+  for (const r of records) {
+    const n = parseAmount(r[amountCol]?.trim() ?? '');
+    if (n === null) continue;
+    if (n < 0) hasNeg = true;
+    if (n > 0) hasPos = true;
+    if (hasNeg && hasPos) break;
+  }
+  // Se ci sono sia positivi che negativi → addebiti = negativi (standard IT)
+  if (hasNeg && hasPos) return 'negative';
+  return 'all';
+}
+
+export function autoDetectMapping(headers: string[], records?: Record<string, string>[]): Partial<ColumnMap> {
   const result: Partial<ColumnMap> = {};
 
   const dateCol = matchHeader(headers, DATE_PATTERNS);
@@ -94,7 +125,12 @@ export function autoDetectMapping(headers: string[]): Partial<ColumnMap> {
   const typeCol = matchHeader(headers, TYPE_PATTERNS);
   if (typeCol) {
     result.typeColumn = typeCol;
-    result.typeFilter = 'debit'; // default: importa solo addebiti
+    result.typeFilter = 'debit';
+  }
+
+  // Per colonna singola: rileva convenzione del segno dai dati reali
+  if (result.amountType === 'single' && result.amount && records?.length) {
+    result.signFilter = detectSignConvention(records, result.amount);
   }
 
   return result;
@@ -223,8 +259,9 @@ export function parseRows(
     if (map.amountType === 'split') {
       const debit = map.debit ? row[map.debit]?.trim() : '';
       const credit = map.credit ? row[map.credit]?.trim() : '';
-      const hasDebit = !!(debit && debit !== '' && debit !== '-');
-      const hasCredit = !!(credit && credit !== '' && credit !== '-');
+      // isEmptyAmount gestisce blank, "-", "0", "0,00", "0.00"
+      const hasDebit = !isEmptyAmount(debit);
+      const hasCredit = !isEmptyAmount(credit);
 
       // Determina tipo di movimento e applica filtro (default: solo addebiti)
       const filter = map.typeFilter ?? 'debit';
