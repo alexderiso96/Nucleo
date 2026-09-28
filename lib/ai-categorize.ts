@@ -60,7 +60,9 @@ Nessuna spiegazione, solo l'array JSON.`;
 }
 
 function parseResult(text: string, count: number): AICategory[] {
-  const match = text.match(/\[[\s\S]*?\]/);
+  // Prende l'ultimo array JSON trovato — nei reasoning model la risposta finale è in fondo
+  const matches = [...text.matchAll(/\[[\s\S]*?\]/g)];
+  const match = matches.at(-1);
   if (!match) return Array(count).fill('altro') as string[];
   try {
     const arr = JSON.parse(match[0]) as unknown[];
@@ -113,8 +115,8 @@ export async function categorizeWithAI(
     const groqModels = process.env.GROQ_MODEL
       ? [process.env.GROQ_MODEL]
       : [
-          'openai/gpt-oss-20b',    // ottimale per categorizzazione: veloce, gratis
-          'openai/gpt-oss-120b',   // fallback più capace
+          'openai/gpt-oss-120b',   // primario: non-reasoning, output diretto
+          'openai/gpt-oss-20b',    // fallback: reasoning model, estraggo da reasoning
         ];
 
     for (const model of groqModels) {
@@ -151,7 +153,10 @@ export async function categorizeWithAI(
         const bodyText = await res.text();
         console.log(`[ai] Groq model="${model}" body (first 600):`, bodyText.slice(0, 600));
 
-        let json: { choices?: { message?: { content?: string; reasoning_content?: string } }[]; error?: { message: string; type?: string } };
+        let json: {
+          choices?: { message?: { content?: string; reasoning?: string; reasoning_content?: string } }[];
+          error?: { message: string; type?: string };
+        };
         try { json = JSON.parse(bodyText) as typeof json; }
         catch { console.error('[ai] Groq JSON parse error'); break; }
 
@@ -161,7 +166,13 @@ export async function categorizeWithAI(
         }
 
         const msg = json.choices?.[0]?.message;
-        const raw = (msg?.content ?? msg?.reasoning_content ?? '').trim();
+        // reasoning models: content vuoto, risposta in reasoning o reasoning_content
+        const raw = (
+          msg?.content?.trim() ||
+          msg?.reasoning_content?.trim() ||
+          msg?.reasoning?.trim() ||
+          ''
+        );
         console.log(`[ai] Groq model="${model}" raw (first 500):`, raw.slice(0, 500));
         const parsed = parseResult(raw, descriptions.length);
         console.log('[ai] Groq parsed:', parsed);
