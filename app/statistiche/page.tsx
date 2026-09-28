@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
-import { CATEGORIES } from '@/lib/categories';
-import {
-  PieChart, Pie, Cell, Tooltip,
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-} from 'recharts';
+import { useCategories } from '@/lib/use-categories';
+
+const CategoryCharts = dynamic(() => import('@/components/CategoryCharts'), { ssr: false });
 
 type Period = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
 type ExpType = 'expense' | 'income';
@@ -46,30 +45,31 @@ function periodRange(period: Period, customFrom: string, customTo: string): { fr
   }
 }
 
-function getCatMeta(value: string) {
-  return CATEGORIES.find(c => c.value === value) ?? {
-    label: value, icon: '📦',
-    darkBg: 'rgba(100,116,139,0.14)', darkText: '#64748b',
-  };
-}
-
 const PERIODS: { key: Period; label: string }[] = [
-  { key: 'today', label: 'Oggi' },
-  { key: 'week',  label: 'Settimana' },
-  { key: 'month', label: 'Mese' },
-  { key: 'year',  label: 'Anno' },
-  { key: 'all',   label: 'Sempre' },
+  { key: 'today',  label: 'Oggi' },
+  { key: 'week',   label: 'Settimana' },
+  { key: 'month',  label: 'Mese' },
+  { key: 'year',   label: 'Anno' },
+  { key: 'all',    label: 'Sempre' },
   { key: 'custom', label: 'Personalizzato' },
 ];
 
 export default function StatistichePage() {
-  const [period, setPeriod]       = useState<Period>('month');
-  const [type, setType]           = useState<ExpType>('expense');
+  const [period, setPeriod]         = useState<Period>('month');
+  const [type, setType]             = useState<ExpType>('expense');
   const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo]   = useState(todayStr());
-  const [data, setData]           = useState<CategoryStat[]>([]);
-  const [total, setTotal]         = useState(0);
-  const [loading, setLoading]     = useState(true);
+  const [customTo, setCustomTo]     = useState(todayStr());
+  const [data, setData]             = useState<CategoryStat[]>([]);
+  const [total, setTotal]           = useState(0);
+  const [loading, setLoading]       = useState(true);
+
+  const { categories } = useCategories();
+
+  const getCatMeta = useCallback((value: string) => {
+    return categories.find(c => c.value === value) ?? {
+      label: value, icon: '📦', darkBg: 'rgba(100,116,139,0.14)', darkText: '#64748b',
+    };
+  }, [categories]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -87,11 +87,10 @@ export default function StatistichePage() {
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  const pieData = data.map(d => ({
-    ...d,
-    fill: getCatMeta(d.category).darkText,
-    label: getCatMeta(d.category).label,
-  }));
+  const pieData = data.map(d => {
+    const meta = getCatMeta(d.category);
+    return { ...d, fill: meta.darkText, label: `${meta.icon} ${meta.label}` };
+  });
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
@@ -109,7 +108,7 @@ export default function StatistichePage() {
 
         <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full">
 
-          {/* Filtri periodo */}
+          {/* Filtri */}
           <div className="card p-4 flex flex-col gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-semibold uppercase tracking-widest w-14 shrink-0" style={{ color: 'var(--text-3)' }}>Periodo</span>
@@ -143,9 +142,7 @@ export default function StatistichePage() {
               <span className="text-[10px] font-semibold uppercase tracking-widest w-14 shrink-0" style={{ color: 'var(--text-3)' }}>Tipo</span>
               <div className="flex gap-1">
                 {(['expense', 'income'] as ExpType[]).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setType(t)}
+                  <button key={t} onClick={() => setType(t)}
                     className="px-3 py-1 rounded-full text-[11px] font-semibold transition-all"
                     style={type === t
                       ? { background: t === 'expense' ? 'rgba(251,113,133,0.25)' : 'rgba(52,211,153,0.25)', color: t === 'expense' ? '#fb7185' : '#34d399' }
@@ -167,132 +164,12 @@ export default function StatistichePage() {
               Nessun dato per questo periodo.
             </div>
           ) : (
-            <>
-              {/* Grafico a ciambella */}
-              <div className="card p-5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest mb-4" style={{ color: 'var(--text-3)' }}>
-                  Distribuzione per categoria
-                </p>
-                <div className="flex flex-col md:flex-row items-center gap-6">
-                  {/* Donut */}
-                  <div className="relative shrink-0" style={{ width: 220, height: 220 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={68}
-                          outerRadius={100}
-                          paddingAngle={2}
-                          dataKey="total"
-                          strokeWidth={0}
-                        >
-                          {pieData.map((entry, i) => (
-                            <Cell key={i} fill={entry.fill} opacity={0.9} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value) => [fmt(Number(value)), '']}
-                          contentStyle={{
-                            background: 'var(--dark-800)',
-                            border: '1px solid var(--dark-600)',
-                            borderRadius: 8,
-                            fontSize: 11,
-                            color: 'var(--text-1)',
-                          }}
-                          itemStyle={{ color: 'var(--text-1)' }}
-                          labelFormatter={(_, payload) => payload?.[0]?.payload?.label ?? ''}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    {/* Totale al centro */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-                        Totale
-                      </span>
-                      <span className="text-base font-bold tabular-nums mt-0.5" style={{ color: 'var(--text-1)' }}>
-                        {fmt(total)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Legenda */}
-                  <div className="flex flex-col gap-2 flex-1 w-full">
-                    {pieData.map((entry, i) => {
-                      const pct = total > 0 ? (entry.total / total) * 100 : 0;
-                      const meta = getCatMeta(entry.category);
-                      return (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="text-base shrink-0 w-6 text-center">{meta.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{meta.label}</span>
-                              <span className="text-xs tabular-nums ml-2 shrink-0 font-semibold" style={{ color: 'var(--text-1)' }}>{fmt(entry.total)}</span>
-                            </div>
-                            <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--dark-600)' }}>
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{ width: `${pct}%`, background: entry.fill }}
-                              />
-                            </div>
-                            <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-                              {pct.toFixed(1)}% · {entry.count} voce{entry.count !== 1 ? '' : ''}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Grafico a barre orizzontali */}
-              <div className="card p-5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest mb-4" style={{ color: 'var(--text-3)' }}>
-                  Confronto categorie
-                </p>
-                <ResponsiveContainer width="100%" height={Math.max(180, data.length * 36)}>
-                  <BarChart
-                    layout="vertical"
-                    data={pieData}
-                    margin={{ top: 0, right: 60, bottom: 0, left: 80 }}
-                  >
-                    <CartesianGrid horizontal={false} stroke="var(--dark-600)" strokeDasharray="3 3" />
-                    <XAxis
-                      type="number"
-                      tickFormatter={v => `€${(v as number).toLocaleString('it-IT', { minimumFractionDigits: 0 })}`}
-                      tick={{ fontSize: 10, fill: 'var(--text-3)' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="label"
-                      tick={{ fontSize: 11, fill: 'var(--text-2)' }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={76}
-                    />
-                    <Tooltip
-                      formatter={(value) => [fmt(Number(value)), 'Importo']}
-                      contentStyle={{
-                        background: 'var(--dark-800)',
-                        border: '1px solid var(--dark-600)',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        color: 'var(--text-1)',
-                      }}
-                    />
-                    <Bar dataKey="total" radius={[0, 4, 4, 0]} maxBarSize={20}>
-                      {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} opacity={0.85} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </>
+            <div className="card p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-6" style={{ color: 'var(--text-3)' }}>
+                Distribuzione per categoria
+              </p>
+              <CategoryCharts pieData={pieData} total={total} />
+            </div>
           )}
         </main>
       </div>

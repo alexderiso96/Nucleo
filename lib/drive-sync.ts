@@ -3,13 +3,14 @@ export const runtime = 'nodejs';
 import { createClient } from '@/lib/supabaseServer';
 import { parseNucleoJson } from '@/lib/json-parser';
 import { categorizeDescription, type MerchantRule } from '@/lib/categorize';
-import { categorizeWithAI } from '@/lib/ai-categorize';
+import { categorizeWithAI, resolveAICategories } from '@/lib/ai-categorize';
 
 export interface SyncResult {
   skipped: boolean;
   files: number;
   imported: number;
   duplicates: number;
+  recategorized: number;
 }
 
 async function getAccessToken(refreshToken: string): Promise<string | null> {
@@ -30,7 +31,7 @@ async function getAccessToken(refreshToken: string): Promise<string | null> {
 export async function syncDriveForUser(): Promise<SyncResult> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { skipped: true, files: 0, imported: 0, duplicates: 0 };
+  if (!user) return { skipped: true, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -39,12 +40,11 @@ export async function syncDriveForUser(): Promise<SyncResult> {
     .single();
 
   if (!profile?.drive_refresh_token || !profile?.drive_folder_id)
-    return { skipped: true, files: 0, imported: 0, duplicates: 0 };
+    return { skipped: true, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
 
   const accessToken = await getAccessToken(profile.drive_refresh_token);
-  if (!accessToken) return { skipped: true, files: 0, imported: 0, duplicates: 0 };
+  if (!accessToken) return { skipped: true, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
 
-  // Solo file JSON modificati dopo l'ultima sync (sync incrementale)
   const sinceClause = profile.drive_last_synced_at
     ? ` and modifiedTime > '${profile.drive_last_synced_at}'`
     : '';
@@ -57,22 +57,23 @@ export async function syncDriveForUser(): Promise<SyncResult> {
   const listData = await listRes.json() as { files?: { id: string; name: string }[] };
   const files = listData.files ?? [];
 
-  // Aggiorna lastSyncedAt anche se non ci sono file nuovi
   const now = new Date().toISOString();
 
   if (files.length === 0) {
     await supabase.from('profiles').update({ drive_last_synced_at: now }).eq('id', user.id);
-    return { skipped: false, files: 0, imported: 0, duplicates: 0 };
+    return { skipped: false, files: 0, imported: 0, duplicates: 0, recategorized: 0 };
   }
 
-  const { data: rulesData } = await supabase
-    .from('merchant_rules')
-    .select('pattern, category')
-    .eq('user_id', user.id);
+  const [{ data: rulesData }, { data: userCatsData }] = await Promise.all([
+    supabase.from('merchant_rules').select('pattern, category').eq('user_id', user.id),
+    supabase.from('user_categories').select('value, label').eq('user_id', user.id),
+  ]);
   const merchantRules: MerchantRule[] = rulesData ?? [];
+  const userCats = (userCatsData ?? []) as { value: string; label: string }[];
 
   let totalImported = 0;
   let totalDuplicates = 0;
+  let totalRecategorized = 0;
 
   for (const file of files) {
     const fileRes = await fetch(
@@ -99,9 +100,12 @@ export async function syncDriveForUser(): Promise<SyncResult> {
     );
 
     const toInsert: typeof valid = [];
+    const duplicateRows: typeof valid = [];
+
     for (const row of valid) {
       const key = `${row.date}|${row.amount.toFixed(2)}`;
       if (existingKeys.has(key)) {
+        if (!row.isIncome) duplicateRows.push(row);
         totalDuplicates++;
       } else {
         toInsert.push(row);
@@ -109,52 +113,99 @@ export async function syncDriveForUser(): Promise<SyncResult> {
       }
     }
 
-    if (toInsert.length > 0) {
-      // Pre-categorizzazione; batch AI per le righe a bassa confidence
-      type CatResult = { category: string; confidence: string };
-      const preCat: CatResult[] = toInsert.map(row => {
-        if (row.isIncome) return { category: 'income', confidence: 'high' };
-        return categorizeDescription(row.description, merchantRules);
-      });
+    // --- Ricategorizza i duplicati con category = 'altro' ---
+    if (duplicateRows.length > 0) {
+      const dupDates = [...new Set(duplicateRows.map(r => r.date))];
+      const { data: uncatExisting } = await supabase
+        .from('expenses')
+        .select('id, description, expense_date, amount')
+        .eq('user_id', user.id)
+        .eq('category', 'altro')
+        .eq('source', 'csv')
+        .in('expense_date', dupDates);
 
-      const lowIdxs = preCat
-        .map((c, i) => (c.confidence === 'low' ? i : -1))
-        .filter(i => i >= 0);
+      const toRecat = (uncatExisting ?? []).filter(e =>
+        duplicateRows.some(r =>
+          r.date === e.expense_date &&
+          Math.abs(r.amount - Number(e.amount)) < 0.005,
+        ),
+      );
 
-      if (lowIdxs.length > 0) {
-        const descs = lowIdxs.map(i => toInsert[i].description ?? '');
-        const aiRes = await categorizeWithAI(descs).catch(() => null);
+      if (toRecat.length > 0) {
+        const descs = toRecat.map(e => e.description ?? '');
+        const aiRes = await categorizeWithAI(descs, userCats).catch(() => null);
         if (aiRes) {
-          for (let k = 0; k < lowIdxs.length; k++) {
-            preCat[lowIdxs[k]] = { category: aiRes[k], confidence: 'low' };
+          const resolved = await resolveAICategories(aiRes, user.id).catch(() => null);
+          if (resolved) {
+            for (let k = 0; k < toRecat.length; k++) {
+              if (resolved[k] !== 'altro') {
+                await supabase
+                  .from('expenses')
+                  .update({ category: resolved[k], category_confidence: 'ai' })
+                  .eq('id', toRecat[k].id);
+                totalRecategorized++;
+              }
+            }
           }
         }
       }
+    }
 
-      const BATCH = 100;
-      for (let i = 0; i < toInsert.length; i += BATCH) {
-        const chunk = toInsert.slice(i, i + BATCH).map((row, j) => {
-          const { category, confidence } = preCat[i + j];
-          return {
-            user_id:             user.id,
-            amount:              row.amount,
-            currency:            'EUR',
-            category,
-            category_confidence: confidence,
-            description:         row.description,
-            expense_date:        row.date,
-            source:              'csv',
-            is_shared:           false,
-            is_income:           row.isIncome,
-          };
-        });
-        const { error } = await supabase.from('expenses').insert(chunk);
-        if (!error) totalImported += chunk.length;
+    if (toInsert.length === 0) continue;
+
+    // --- Pre-categorizzazione + batch AI ---
+    type CatResult = { category: string; confidence: string };
+    const preCat: CatResult[] = toInsert.map(row => {
+      if (row.isIncome) return { category: 'income', confidence: 'high' };
+      return categorizeDescription(row.description, merchantRules);
+    });
+
+    const lowIdxs = preCat
+      .map((c, i) => (c.confidence === 'low' ? i : -1))
+      .filter(i => i >= 0);
+
+    if (lowIdxs.length > 0) {
+      const descs = lowIdxs.map(i => toInsert[i].description ?? '');
+      const aiRes = await categorizeWithAI(descs, userCats).catch(() => null);
+      if (aiRes) {
+        const resolved = await resolveAICategories(aiRes, user.id).catch(() => null);
+        if (resolved) {
+          for (let k = 0; k < lowIdxs.length; k++) {
+            preCat[lowIdxs[k]] = { category: resolved[k], confidence: 'low' };
+          }
+        }
       }
+    }
+
+    const BATCH = 100;
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const chunk = toInsert.slice(i, i + BATCH).map((row, j) => {
+        const { category, confidence } = preCat[i + j];
+        return {
+          user_id:             user.id,
+          amount:              row.amount,
+          currency:            'EUR',
+          category,
+          category_confidence: confidence,
+          description:         row.description,
+          expense_date:        row.date,
+          source:              'csv',
+          is_shared:           false,
+          is_income:           row.isIncome,
+        };
+      });
+      const { error } = await supabase.from('expenses').insert(chunk);
+      if (!error) totalImported += chunk.length;
     }
   }
 
   await supabase.from('profiles').update({ drive_last_synced_at: now }).eq('id', user.id);
 
-  return { skipped: false, files: files.length, imported: totalImported, duplicates: totalDuplicates };
+  return {
+    skipped: false,
+    files: files.length,
+    imported: totalImported,
+    duplicates: totalDuplicates,
+    recategorized: totalRecategorized,
+  };
 }

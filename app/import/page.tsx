@@ -31,6 +31,7 @@ interface ParsedFile {
 interface ImportResult {
   imported: number;
   duplicates: number;
+  recategorized: number;
   total: number;
   discarded: number;
 }
@@ -325,13 +326,13 @@ export default function ImportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows: validRows.map(r => ({ date: r.date, amount: r.amount, description: r.description, isIncome: r.isIncome })) }),
       });
-      const json = await res.json() as { imported: number; duplicates: number; total: number; error?: string };
+      const json = await res.json() as { imported: number; duplicates: number; recategorized: number; total: number; error?: string };
       if (!res.ok) {
         setError(json.error ?? 'Errore durante l\'importazione.');
         setStep('preview');
         return;
       }
-      setResult({ imported: json.imported, duplicates: json.duplicates, total: json.total, discarded: invalidRows.length });
+      setResult({ imported: json.imported, duplicates: json.duplicates, recategorized: json.recategorized ?? 0, total: json.total, discarded: invalidRows.length });
       setStep('done');
     } catch {
       setError('Errore di rete durante l\'importazione.');
@@ -935,9 +936,10 @@ export default function ImportPage() {
               </div>
               <h2 className="text-base font-semibold text-slate-200">Importazione completata</h2>
             </div>
-            <div className="grid grid-cols-3 gap-3 mb-8">
+            <div className="grid grid-cols-2 gap-3 mb-8">
               {[
                 { label: 'Importate', value: result.imported, color: 'text-emerald-400' },
+                { label: 'Ricategorizzate', value: result.recategorized, color: 'text-indigo-400' },
                 { label: 'Duplicate (ignorate)', value: result.duplicates, color: 'text-slate-400' },
                 { label: 'Scartate', value: result.discarded, color: 'text-amber-400' },
               ].map(({ label, value, color }) => (

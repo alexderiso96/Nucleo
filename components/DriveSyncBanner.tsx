@@ -6,9 +6,10 @@ import { RefreshCw } from 'lucide-react';
 interface Props {
   imported: number;
   files: number;
+  recategorized?: number;
 }
 
-export default function DriveSyncBanner({ imported, files }: Props) {
+export default function DriveSyncBanner({ imported, files, recategorized = 0 }: Props) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -25,7 +26,8 @@ export default function DriveSyncBanner({ imported, files }: Props) {
     >
       <RefreshCw size={13} className="shrink-0" />
       <span>
-        Drive sincronizzato — {imported} nuov{imported === 1 ? 'a voce importata' : 'e voci importate'} da {files} file{files !== 1 ? '' : ''}
+        Drive sincronizzato — {imported} nuov{imported === 1 ? 'a voce importata' : 'e voci importate'} da {files} file
+        {recategorized > 0 && `, ${recategorized} ricategorizzat${recategorized === 1 ? 'a' : 'e'}`}
       </span>
       <button
         onClick={() => setVisible(false)}

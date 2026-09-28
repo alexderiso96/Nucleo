@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabaseServer';
 import { categorizeDescription, type MerchantRule } from '@/lib/categorize';
-import { categorizeWithAI } from '@/lib/ai-categorize';
+import { categorizeWithAI, resolveAICategories } from '@/lib/ai-categorize';
 
 interface ImportRow {
   date: string;
@@ -27,19 +27,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'rows is empty or invalid' }, { status: 400 });
   }
 
-  // Intervallo di date del batch
   const dates = rows.map(r => r.date).sort();
   const minDate = dates[0];
   const maxDate = dates[dates.length - 1];
 
-  // Carica regole merchant dell'utente per la categorizzazione
-  const { data: rulesData } = await supabase
-    .from('merchant_rules')
-    .select('pattern, category')
-    .eq('user_id', user.id);
+  const [{ data: rulesData }, { data: userCatsData }] = await Promise.all([
+    supabase.from('merchant_rules').select('pattern, category').eq('user_id', user.id),
+    supabase.from('user_categories').select('value, label').eq('user_id', user.id),
+  ]);
   const merchantRules: MerchantRule[] = rulesData ?? [];
+  const userCats = (userCatsData ?? []) as { value: string; label: string }[];
 
-  // Recupera spese CSV esistenti nell'intervallo per deduplicazione
   const { data: existing } = await supabase
     .from('expenses')
     .select('expense_date, amount')
@@ -53,19 +51,58 @@ export async function POST(request: NextRequest) {
   );
 
   const toInsert: ImportRow[] = [];
-  let duplicates = 0;
+  const duplicateRows: ImportRow[] = [];
 
   for (const row of rows) {
     const key = `${row.date}|${row.amount.toFixed(2)}`;
     if (existingKeys.has(key)) {
-      duplicates++;
+      if (!row.isIncome) duplicateRows.push(row);
     } else {
       toInsert.push(row);
-      existingKeys.add(key); // previeni duplicati interni al batch stesso
+      existingKeys.add(key);
     }
   }
 
-  // Pre-categorizzazione con regole; raccogli le descrizioni a bassa confidence per il batch AI
+  // --- Ricategorizza i duplicati con category = 'altro' ---
+  let recategorized = 0;
+  if (duplicateRows.length > 0) {
+    const dupDates = [...new Set(duplicateRows.map(r => r.date))];
+    const { data: uncatExisting } = await supabase
+      .from('expenses')
+      .select('id, description, expense_date, amount')
+      .eq('user_id', user.id)
+      .eq('category', 'altro')
+      .eq('source', 'csv')
+      .in('expense_date', dupDates);
+
+    const toRecat = (uncatExisting ?? []).filter(e =>
+      duplicateRows.some(r =>
+        r.date === e.expense_date &&
+        Math.abs(r.amount - Number(e.amount)) < 0.005,
+      ),
+    );
+
+    if (toRecat.length > 0) {
+      const descs = toRecat.map(e => e.description ?? '');
+      const aiRes = await categorizeWithAI(descs, userCats).catch(() => null);
+      if (aiRes) {
+        const resolved = await resolveAICategories(aiRes, user.id).catch(() => null);
+        if (resolved) {
+          for (let k = 0; k < toRecat.length; k++) {
+            if (resolved[k] !== 'altro') {
+              await supabase
+                .from('expenses')
+                .update({ category: resolved[k], category_confidence: 'ai' })
+                .eq('id', toRecat[k].id);
+              recategorized++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // --- Pre-categorizzazione + batch AI per le nuove righe ---
   type Categorized = { category: string; confidence: string };
   const preCat: Categorized[] = toInsert.map(row => {
     if (row.isIncome) return { category: 'income', confidence: 'high' };
@@ -78,15 +115,18 @@ export async function POST(request: NextRequest) {
 
   if (lowConfIdxs.length > 0) {
     const descs = lowConfIdxs.map(i => toInsert[i].description ?? '');
-    const aiResults = await categorizeWithAI(descs).catch(() => null);
+    const aiResults = await categorizeWithAI(descs, userCats).catch(() => null);
     if (aiResults) {
-      for (let k = 0; k < lowConfIdxs.length; k++) {
-        preCat[lowConfIdxs[k]] = { category: aiResults[k], confidence: 'low' };
+      const resolved = await resolveAICategories(aiResults, user.id).catch(() => null);
+      if (resolved) {
+        for (let k = 0; k < lowConfIdxs.length; k++) {
+          preCat[lowConfIdxs[k]] = { category: resolved[k], confidence: 'low' };
+        }
       }
     }
   }
 
-  // Batch insert a 100 righe per volta
+  // --- Batch insert 100 righe per volta ---
   const BATCH = 100;
   for (let i = 0; i < toInsert.length; i += BATCH) {
     const chunk = toInsert.slice(i, i + BATCH).map((row, j) => {
@@ -106,14 +146,13 @@ export async function POST(request: NextRequest) {
     });
 
     const { error } = await supabase.from('expenses').insert(chunk);
-    if (error) {
-      return NextResponse.json({ error: 'Insert failed' }, { status: 500 });
-    }
+    if (error) return NextResponse.json({ error: 'Insert failed' }, { status: 500 });
   }
 
   return NextResponse.json({
     imported: toInsert.length,
-    duplicates,
+    duplicates: duplicateRows.length,
+    recategorized,
     total: rows.length,
   });
 }
