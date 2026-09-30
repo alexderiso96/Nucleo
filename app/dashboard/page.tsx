@@ -192,7 +192,7 @@ export default async function DashboardPage({
 
           {!hasRange && <AiObservation month={monthKey} />}
 
-          {!hasRange && budgets.length > 0 && (
+          {!hasRange && (
             <BudgetBars budgets={budgets} expenses={list} userCategories={userCategories} />
           )}
 

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { CATEGORIES } from '@/lib/categories';
 
 interface Budget { category: string; amount: number }
@@ -20,6 +21,11 @@ export default function BudgetBars({ budgets, expenses, userCategories }: Props)
     }
   }
 
+  const entries = Object.entries(byCategory).sort(([, a], [, b]) => b - a);
+  if (entries.length === 0) return null;
+
+  const maxSpent = entries[0][1];
+
   function catMeta(value: string): { icon: string; label: string } {
     const builtin = CATEGORIES.find(c => c.value === value);
     if (builtin) return { icon: builtin.icon, label: builtin.label };
@@ -29,37 +35,62 @@ export default function BudgetBars({ budgets, expenses, userCategories }: Props)
   }
 
   return (
-    <div className="card p-5 flex flex-col gap-3">
-      <p className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Budget del mese</p>
+    <div className="card p-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>Spese per categoria</p>
+        <Link
+          href="/profile?tab=budget"
+          className="text-[11px] font-medium transition-colors"
+          style={{ color: 'var(--brand-light)' }}
+        >
+          Gestisci budget →
+        </Link>
+      </div>
 
-      {budgets.length === 0 ? (
-        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-          Nessun budget impostato.{' '}
-          <a href="/settings" style={{ color: 'var(--brand-light)' }}>Impostali in Impostazioni →</a>
-        </p>
-      ) : (
-        budgets.map(b => {
-          const actual = byCategory[b.category] ?? 0;
-          const pct = Math.min((actual / b.amount) * 100, 100);
-          const barColor = pct < 75 ? 'var(--brand)' : pct < 100 ? 'var(--warning)' : 'var(--expense)';
-          const { icon, label } = catMeta(b.category);
+      <div className="flex flex-col gap-3">
+        {entries.map(([cat, actual]) => {
+          const budget = budgets.find(b => b.category === cat);
+          const { icon, label } = catMeta(cat);
+
+          let barWidth: number;
+          let barColor: string;
+
+          if (budget) {
+            const pct = (actual / budget.amount) * 100;
+            barWidth = Math.min(pct, 100);
+            barColor = pct < 75 ? 'var(--brand)' : pct < 100 ? 'var(--warning)' : 'var(--expense)';
+          } else {
+            barWidth = (actual / maxSpent) * 100;
+            barColor = 'var(--brand)';
+          }
+
           return (
-            <div key={b.category} className="flex flex-col gap-1.5">
+            <div key={cat} className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-sm w-5 text-center shrink-0">{icon}</span>
                 <span className="flex-1 text-[13px]" style={{ color: 'var(--text-1)' }}>{label}</span>
-                <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-2)' }}>
+                <span className="text-[12px] tabular-nums font-medium" style={{ color: 'var(--text-2)' }}>
                   {fmt(actual)}
                 </span>
-                <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>/ {fmt(b.amount)}</span>
+                {budget ? (
+                  <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>/ {fmt(budget.amount)}</span>
+                ) : (
+                  <Link
+                    href="/profile?tab=budget"
+                    className="text-[10px] px-1.5 py-0.5 rounded-md transition-colors"
+                    style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+                  >
+                    + budget
+                  </Link>
+                )}
               </div>
               <div style={{ height: '4px', borderRadius: '9999px', background: 'var(--surface-2)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pct}%`, borderRadius: '9999px', background: barColor, transition: 'width 0.4s ease' }} />
+                <div style={{ height: '100%', width: `${barWidth}%`, borderRadius: '9999px', background: barColor, transition: 'width 0.4s ease' }} />
               </div>
             </div>
           );
-        })
-      )}
+        })}
+      </div>
     </div>
   );
 }

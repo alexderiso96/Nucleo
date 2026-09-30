@@ -8,7 +8,6 @@ import {
   Upload,
   FileText,
   Users,
-  Settings,
   BarChart2,
   User,
 } from 'lucide-react';
@@ -107,67 +106,37 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Profilo + Settings in fondo */}
+      {/* Profilo in fondo */}
       <div className="px-2 mt-auto pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--border-strong)' }}>
         <Link
           href="/profile"
           className="relative flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"
           style={
-            pathname === '/profile'
+            pathname.startsWith('/profile')
               ? { background: 'rgba(16,185,129,0.12)', color: 'var(--brand-light)' }
               : { color: 'var(--text-3)' }
           }
           onMouseEnter={e => {
-            if (pathname !== '/profile') {
+            if (!pathname.startsWith('/profile')) {
               (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
               (e.currentTarget as HTMLElement).style.color = 'var(--text-2)';
             }
           }}
           onMouseLeave={e => {
-            if (pathname !== '/profile') {
+            if (!pathname.startsWith('/profile')) {
               (e.currentTarget as HTMLElement).style.background = 'transparent';
               (e.currentTarget as HTMLElement).style.color = 'var(--text-3)';
             }
           }}
         >
-          {pathname === '/profile' && (
+          {pathname.startsWith('/profile') && (
             <span
               className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r"
               style={{ background: 'var(--brand)' }}
             />
           )}
-          <User size={16} strokeWidth={pathname === '/profile' ? 2.2 : 1.8} />
+          <User size={16} strokeWidth={pathname.startsWith('/profile') ? 2.2 : 1.8} />
           <span className="text-sm font-medium">Profilo</span>
-        </Link>
-        <Link
-          href="/settings"
-          className="relative flex items-center gap-3 w-full h-10 px-3 rounded-xl transition-all duration-200"
-          style={
-            pathname === '/settings'
-              ? { background: 'rgba(16,185,129,0.12)', color: 'var(--brand-light)' }
-              : { color: 'var(--text-3)' }
-          }
-          onMouseEnter={e => {
-            if (pathname !== '/settings') {
-              (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-              (e.currentTarget as HTMLElement).style.color = 'var(--text-2)';
-            }
-          }}
-          onMouseLeave={e => {
-            if (pathname !== '/settings') {
-              (e.currentTarget as HTMLElement).style.background = 'transparent';
-              (e.currentTarget as HTMLElement).style.color = 'var(--text-3)';
-            }
-          }}
-        >
-          {pathname === '/settings' && (
-            <span
-              className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r"
-              style={{ background: 'var(--brand)' }}
-            />
-          )}
-          <Settings size={16} strokeWidth={pathname === '/settings' ? 2.2 : 1.8} />
-          <span className="text-sm font-medium">Impostazioni</span>
         </Link>
       </div>
     </aside>
