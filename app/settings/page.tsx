@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Trash2, Plus, X } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import { useCategories } from '@/lib/use-categories';
+import BudgetSection from '@/components/BudgetSection';
 
 const EMOJI_SUGGESTIONS = ['🏠','🚗','🛒','🍽️','💊','🏋️','👗','🎬','⚡','✈️','🎓','💼','🐾','🎁','🌿','💻','📱','🏖️','🎵','🍷'];
 
@@ -179,6 +180,8 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+
+          <BudgetSection />
 
           {/* Zona pericolosa */}
           <div className="card p-5" style={{ borderColor: 'rgba(239,68,68,0.25)' }}>

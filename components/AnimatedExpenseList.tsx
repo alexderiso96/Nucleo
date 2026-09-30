@@ -147,6 +147,25 @@ export default function AnimatedExpenseList({ expenses, monthLabel, hasHousehold
   const [savingNote, setSavingNote] = useState(false);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Refs per auto-save su smontaggio (navigazione pagina con popup aperto)
+  const noteExpenseIdRef = useRef<string | null>(null);
+  const noteDraftRef = useRef('');
+  useEffect(() => { noteExpenseIdRef.current = noteExpenseId; }, [noteExpenseId]);
+  useEffect(() => { noteDraftRef.current = noteDraft; }, [noteDraft]);
+  useEffect(() => {
+    return () => {
+      const id = noteExpenseIdRef.current;
+      const draft = noteDraftRef.current.trim();
+      if (id) {
+        fetch(`/api/expenses/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: draft || null }),
+        }).catch(() => {});
+      }
+    };
+  }, []);
+
   // Focus textarea quando il popup si apre
   useEffect(() => {
     if (noteExpenseId) {

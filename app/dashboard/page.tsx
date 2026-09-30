@@ -3,13 +3,15 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabaseServer';
 import { syncDriveForUser } from '@/lib/drive-sync';
+import { CATEGORIES } from '@/lib/categories';
 import Sidebar from '@/components/Sidebar';
 import LogoutButton from '@/components/LogoutButton';
 import ExpenseForm from '@/components/ExpenseForm';
-import AnimatedExpenseList from '@/components/AnimatedExpenseList';
 import DashboardStats from '@/components/DashboardStats';
 import DriveSyncBanner from '@/components/DriveSyncBanner';
 import DateRangeFilter from '@/components/DateRangeFilter';
+import AiObservation from '@/components/AiObservation';
+import BudgetBars from '@/components/BudgetBars';
 
 function parseMonthParam(param: string | undefined): { year: number; month: number } {
   if (param && /^\d{4}-\d{2}$/.test(param)) {
@@ -24,6 +26,19 @@ function monthHref(year: number, month: number): string {
   return `/dashboard?month=${year}-${String(month + 1).padStart(2, '0')}`;
 }
 
+const fmt = (n: number) =>
+  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
+
+function catIcon(value: string): string {
+  return CATEGORIES.find(c => c.value === value)?.icon ?? '📦';
+}
+function catLabel(value: string): string {
+  return CATEGORIES.find(c => c.value === value)?.label ?? value;
+}
+function formatDate(d: string): string {
+  return new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -31,7 +46,6 @@ export default async function DashboardPage({
 }) {
   const { month: monthParam, from: fromParam, to: toParam } = await searchParams;
 
-  // Se presenti from/to, usa range personalizzato; altrimenti mese corrente
   const hasRange = fromParam && toParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam) && /^\d{4}-\d{2}-\d{2}$/.test(toParam);
   const { year, month } = parseMonthParam(monthParam);
 
@@ -46,7 +60,6 @@ export default async function DashboardPage({
     .from('profiles')
     .upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true });
 
-  // Sync automatico da Drive (incrementale, solo file nuovi)
   const driveSync = await syncDriveForUser().catch(() => null);
 
   const { data: expenses } = await supabase
@@ -58,34 +71,25 @@ export default async function DashboardPage({
     .order('created_at', { ascending: false });
 
   const list = expenses ?? [];
-  // Solo uscite per il totale spese
   const totalMonth = list
     .filter(e => !e.is_income)
     .reduce((sum, e) => sum + Number(e.amount), 0);
 
-  // Nucleo familiare + categorie utente — in parallelo
-  const [{ data: profile }, { data: userCatsData }] = await Promise.all([
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+  const [{ data: profile }, { data: userCatsData }, { data: budgetsData }, { data: payslipThisMonth }] = await Promise.all([
     supabase.from('profiles').select('household_id').eq('id', user.id).single(),
     supabase.from('user_categories').select('value, label, icon, color').eq('user_id', user.id),
+    supabase.from('budgets').select('category, amount').eq('user_id', user.id).eq('month', `${monthKey}-01`),
+    supabase.from('payslips').select('net_amount').eq('user_id', user.id).eq('period_month', `${monthKey}-01`).maybeSingle(),
   ]);
-  const hasHousehold = Boolean(profile?.household_id);
+
   const userCategories = (userCatsData ?? []) as { value: string; label: string; icon: string; color: string }[];
+  const budgets = (budgetsData ?? []) as { category: string; amount: number }[];
 
-  // Netto del mese corrente da buste paga (per "Entrate")
-  const { data: payslipThisMonth } = await supabase
-    .from('payslips')
-    .select('net_amount')
-    .eq('user_id', user.id)
-    .eq('period_month', `${year}-${String(month + 1).padStart(2, '0')}-01`)
-    .maybeSingle();
-
-  // Entrate: busta paga + accrediti da CSV
-  const csvIncome = list
-    .filter(e => e.is_income)
-    .reduce((sum, e) => sum + Number(e.amount), 0);
+  const csvIncome = list.filter(e => e.is_income).reduce((sum, e) => sum + Number(e.amount), 0);
   const incomeMonth = Number(payslipThisMonth?.net_amount ?? 0) + csvIncome;
 
-  // Spese mese precedente (per trend %)
   const prevFirst = new Date(year, month - 1, 1).toISOString().split('T')[0];
   const prevLast  = new Date(year, month, 0).toISOString().split('T')[0];
   const { data: prevExpenses } = await supabase
@@ -98,7 +102,6 @@ export default async function DashboardPage({
     .filter(e => !e.is_income)
     .reduce((s, e) => s + Number(e.amount), 0);
 
-  // Spese giornaliere per sparkline (solo uscite)
   const dailyMap: Record<string, number> = {};
   for (const e of list) {
     if (!e.is_income) {
@@ -116,6 +119,8 @@ export default async function DashboardPage({
   const monthLabel = hasRange
     ? `${fromParam} → ${toParam}`
     : new Date(year, month).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+
+  const recentExpenses = list.filter(e => !e.is_income).slice(0, 3);
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
@@ -175,6 +180,7 @@ export default async function DashboardPage({
             <DriveSyncBanner imported={driveSync.imported} files={driveSync.files} recategorized={driveSync.recategorized} />
           )}
           <DateRangeFilter from={hasRange ? fromParam : undefined} to={hasRange ? toParam : undefined} />
+
           <DashboardStats
             totalMonth={totalMonth}
             incomeMonth={incomeMonth}
@@ -183,12 +189,57 @@ export default async function DashboardPage({
             monthLabel={monthLabel}
             dailyExpenses={dailyExpenses}
           />
+
+          {!hasRange && <AiObservation month={monthKey} />}
+
+          {!hasRange && budgets.length > 0 && (
+            <BudgetBars budgets={budgets} expenses={list} userCategories={userCategories} />
+          )}
+
           <div className="card p-5 anim-slide-up anim-d3">
             <p className="text-[10px] font-semibold uppercase tracking-widest mb-4"
               style={{ color: 'var(--text-3)' }}>Aggiungi spesa</p>
             <ExpenseForm userCategories={userCategories} />
           </div>
-          <AnimatedExpenseList expenses={list} monthLabel={monthLabel} hasHousehold={hasHousehold} userCategories={userCategories} />
+
+          {/* Ultime 3 spese */}
+          <div className="card p-5 flex flex-col gap-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                Ultime spese
+              </p>
+              <Link
+                href={`/spese?month=${monthKey}`}
+                className="text-[11px] font-medium transition-colors"
+                style={{ color: 'var(--brand-light)' }}
+              >
+                Vedi tutte →
+              </Link>
+            </div>
+
+            {recentExpenses.length === 0 ? (
+              <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Nessuna spesa registrata.</p>
+            ) : (
+              recentExpenses.map(e => (
+                <div key={e.id} className="flex items-center gap-3 py-1">
+                  <span className="text-base w-7 text-center shrink-0">
+                    {userCategories.find(c => c.value === e.category)?.icon ?? catIcon(e.category)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate" style={{ color: 'var(--text-1)' }}>
+                      {e.description || catLabel(e.category)}
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                      {formatDate(e.expense_date)} · {userCategories.find(c => c.value === e.category)?.label ?? catLabel(e.category)}
+                    </p>
+                  </div>
+                  <span className="text-sm tabular-nums font-medium shrink-0" style={{ color: 'var(--expense)' }}>
+                    -{fmt(Number(e.amount))}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </main>
       </div>
     </div>

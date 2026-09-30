@@ -104,7 +104,8 @@ export async function POST(request: NextRequest) {
           const { data: rulesData } = await supabase
             .from('merchant_rules')
             .select('pattern, category')
-            .eq('user_id', userId);
+            .or(`user_id.eq.${userId},user_id.is.null`)
+            .order('user_id', { nullsFirst: false });
           const merchantRules: MerchantRule[] = rulesData ?? [];
 
           const toInsert = rows.filter(r => {

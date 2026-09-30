@@ -29,6 +29,9 @@
   --brand-dark:  #059669;
   --brand-dim:   rgba(16,185,129,0.14);
 
+  /* Alias semantici */
+  --negative: #f87171;   /* red-400 — importi negativi/rosso */
+
   /* Retrocompatibilità */
   --dark-900: var(--bg);
   --dark-800: var(--surface-1);

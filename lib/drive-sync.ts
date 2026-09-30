@@ -89,7 +89,7 @@ export async function syncDriveForUser(): Promise<SyncResult> {
   }
 
   const [{ data: rulesData }, { data: userCatsData }] = await Promise.all([
-    supabase.from('merchant_rules').select('pattern, category').eq('user_id', user.id),
+    supabase.from('merchant_rules').select('pattern, category').or(`user_id.eq.${user.id},user_id.is.null`).order('user_id', { nullsFirst: false }),
     supabase.from('user_categories').select('value, label').eq('user_id', user.id),
   ]);
   const merchantRules: MerchantRule[] = rulesData ?? [];
