@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
+import Sidebar from '@/components/Sidebar';
 import DriveStatus from '@/components/DriveStatus';
 import Papa from 'papaparse';
 import { Upload, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2, Sparkles, Braces } from 'lucide-react';
@@ -399,19 +400,17 @@ export default function ImportPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--dark-900)' }}>
+    <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
       <header
-        className="flex items-center gap-3 px-6 py-4 sticky top-0 z-10"
+        className="flex items-center gap-3 px-6 py-3.5 sticky top-0 z-10"
         style={{ background: 'var(--dark-800)', borderBottom: '1px solid var(--dark-600)' }}
       >
-        <Link href="/dashboard" className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-          <ArrowLeft size={14} /> Dashboard
-        </Link>
-        <span className="text-slate-700">/</span>
         <span className="text-sm font-semibold text-slate-300">Importa CSV</span>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-6 py-8 w-full">
         <DriveStatus />
 
         <p className="text-[10px] text-slate-700 mt-6 mb-6">
@@ -960,6 +959,7 @@ export default function ImportPage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

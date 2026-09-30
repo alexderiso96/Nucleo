@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import Sidebar from '@/components/Sidebar';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2,
@@ -476,7 +477,9 @@ export default function PayslipsUploadPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--dark-900)' }}>
+    <div className="flex min-h-screen" style={{ background: 'var(--dark-900)' }}>
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
       <header className="flex items-center gap-3 px-6 py-3.5 sticky top-0 z-10"
         style={{ background: 'var(--dark-800)', borderBottom: '1px solid var(--dark-600)' }}>
         <Link href="/payslips"
@@ -527,6 +530,7 @@ export default function PayslipsUploadPage() {
           </AnimatePresence>
         </div>
       </main>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabaseServer';
 import Sidebar from '@/components/Sidebar';
-import LogoutButton from '@/components/LogoutButton';
+import HeaderUser from '@/components/HeaderUser';
 import ExpenseForm from '@/components/ExpenseForm';
 import AnimatedExpenseList from '@/components/AnimatedExpenseList';
 import DateRangeFilter from '@/components/DateRangeFilter';
@@ -47,7 +47,7 @@ export default async function SpesePage({
     .order('created_at', { ascending: false });
 
   const [{ data: profile }, { data: userCatsData }] = await Promise.all([
-    supabase.from('profiles').select('household_id').eq('id', user.id).single(),
+    supabase.from('profiles').select('household_id, full_name, username').eq('id', user.id).single(),
     supabase.from('user_categories').select('value, label, icon, color').eq('user_id', user.id),
   ]);
 
@@ -110,10 +110,11 @@ export default async function SpesePage({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-slate-600 hidden sm:block">{user.email}</span>
-            <LogoutButton />
-          </div>
+          <HeaderUser
+            username={profile?.username ?? null}
+            fullName={profile?.full_name ?? null}
+            email={user.email ?? ''}
+          />
         </header>
 
         <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full mx-auto">

@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabaseServer';
 import { syncDriveForUser } from '@/lib/drive-sync';
 import { CATEGORIES } from '@/lib/categories';
 import Sidebar from '@/components/Sidebar';
-import LogoutButton from '@/components/LogoutButton';
+import HeaderUser from '@/components/HeaderUser';
 import ExpenseForm from '@/components/ExpenseForm';
 import DashboardStats from '@/components/DashboardStats';
 import DriveSyncBanner from '@/components/DriveSyncBanner';
@@ -78,7 +78,7 @@ export default async function DashboardPage({
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
   const [{ data: profile }, { data: userCatsData }, { data: budgetsData }, { data: payslipThisMonth }] = await Promise.all([
-    supabase.from('profiles').select('household_id').eq('id', user.id).single(),
+    supabase.from('profiles').select('household_id, full_name, username').eq('id', user.id).single(),
     supabase.from('user_categories').select('value, label, icon, color').eq('user_id', user.id),
     supabase.from('budgets').select('category, amount').eq('user_id', user.id).eq('month', `${monthKey}-01`),
     supabase.from('payslips').select('net_amount').eq('user_id', user.id).eq('period_month', `${monthKey}-01`).maybeSingle(),
@@ -169,10 +169,11 @@ export default async function DashboardPage({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-slate-600 hidden sm:block">{user.email}</span>
-            <LogoutButton />
-          </div>
+          <HeaderUser
+            username={profile?.username ?? null}
+            fullName={profile?.full_name ?? null}
+            email={user.email ?? ''}
+          />
         </header>
 
         <main className="flex-1 px-6 py-6 flex flex-col gap-5 max-w-3xl w-full mx-auto">

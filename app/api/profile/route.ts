@@ -43,8 +43,7 @@ export async function PATCH(request: NextRequest) {
 
   const { error } = await supabase
     .from('profiles')
-    .update(update)
-    .eq('id', user.id);
+    .upsert({ id: user.id, ...update }, { onConflict: 'id' });
 
   if (error) {
     if (error.code === '23505') {
