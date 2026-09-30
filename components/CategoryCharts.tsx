@@ -11,128 +11,155 @@ interface CategoryStat {
   count: number;
   fill: string;
   label: string;
+  icon: string;
 }
-
-const fmt = (n: number) =>
-  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
 
 interface Props {
   pieData: CategoryStat[];
   total: number;
+  fmt: (n: number) => string;
 }
 
-export default function CategoryCharts({ pieData, total }: Props) {
+const MAX_VISIBLE = 6;
+const OTHERS_COLOR = '#64748b';
+
+export default function CategoryCharts({ pieData, total, fmt }: Props) {
+  const visible = pieData.slice(0, MAX_VISIBLE);
+  const others  = pieData.slice(MAX_VISIBLE);
+  const othersTotal = others.reduce((s, e) => s + e.total, 0);
+  const hasOthers   = others.length > 0;
+
+  const barData: { name: string; total: number; fill: string }[] = [
+    ...visible.map(d => ({ name: d.label, total: d.total, fill: d.fill })),
+    ...(hasOthers ? [{ name: `+${others.length} altre`, total: othersTotal, fill: OTHERS_COLOR }] : []),
+  ];
+
+  const tooltipStyle = {
+    background: 'var(--dark-800)',
+    border: '1px solid var(--dark-600)',
+    borderRadius: 8,
+    fontSize: 11,
+    color: 'var(--text-1)',
+  };
+
   return (
     <>
-      {/* Donut */}
-      <div className="flex flex-col md:flex-row items-center gap-6">
-        <div className="relative shrink-0" style={{ width: 220, height: 220 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={68}
-                outerRadius={100}
-                paddingAngle={2}
-                dataKey="total"
-                strokeWidth={0}
-              >
-                {pieData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} opacity={0.9} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value) => [fmt(Number(value)), '']}
-                contentStyle={{
-                  background: 'var(--dark-800)',
-                  border: '1px solid var(--dark-600)',
-                  borderRadius: 8,
-                  fontSize: 11,
-                  color: 'var(--text-1)',
-                }}
-                itemStyle={{ color: 'var(--text-1)' }}
-                labelFormatter={(_, payload) => payload?.[0]?.payload?.label ?? ''}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          {/* Totale al centro */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-              Totale
-            </span>
-            <span className="text-base font-bold tabular-nums mt-0.5" style={{ color: 'var(--text-1)' }}>
-              {fmt(total)}
-            </span>
-          </div>
-        </div>
+      {/* ── Distribuzione per categoria ─────────────────────── */}
+      <div className="py-6" style={{ borderBottom: '1px solid var(--border)' }}>
+        <p className="text-sm font-semibold mb-5" style={{ color: 'var(--text-1)' }}>
+          Distribuzione per categoria
+        </p>
 
-        {/* Legenda */}
-        <div className="flex flex-col gap-2 flex-1 w-full">
-          {pieData.map((entry, i) => {
-            const pct = total > 0 ? (entry.total / total) * 100 : 0;
-            return (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-base shrink-0 w-6 text-center">{entry.label.startsWith('📦') || entry.label.length <= 2 ? entry.label : ''}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{entry.label}</span>
-                    <span className="text-xs tabular-nums ml-2 shrink-0 font-semibold" style={{ color: 'var(--text-1)' }}>{fmt(entry.total)}</span>
-                  </div>
-                  <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--dark-600)' }}>
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: entry.fill }} />
-                  </div>
-                  <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-                    {pct.toFixed(1)}% · {entry.count} voce{entry.count !== 1 ? '' : ''}
+        <div className="flex flex-col md:flex-row items-start gap-8">
+          {/* Donut */}
+          <div className="relative shrink-0 mx-auto md:mx-0" style={{ width: 200, height: 200 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={62}
+                  outerRadius={92}
+                  paddingAngle={2}
+                  dataKey="total"
+                  strokeWidth={0}
+                >
+                  {pieData.map((entry, i) => (
+                    <Cell key={i} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(v) => [fmt(Number(v)), '']}
+                  contentStyle={tooltipStyle}
+                  itemStyle={{ color: 'var(--text-1)' }}
+                  labelFormatter={(_, payload) => payload?.[0]?.payload?.label ?? ''}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Totale centro */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>Totale</span>
+              <span className="text-sm font-bold tabular-nums mt-0.5" style={{ color: 'var(--text-1)' }}>
+                {fmt(total)}
+              </span>
+            </div>
+          </div>
+
+          {/* Lista categorie */}
+          <div className="flex flex-col flex-1 w-full" style={{ gap: '10px' }}>
+            {visible.map(entry => {
+              const pct = total > 0 ? (entry.total / total) * 100 : 0;
+              return (
+                <div key={entry.category} className="flex items-center gap-2.5">
+                  <span className="text-[15px] shrink-0 leading-none" style={{ color: entry.fill }}>●</span>
+                  <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--text-2)' }}>
+                    {entry.label}
+                  </span>
+                  <span className="text-[11px] tabular-nums shrink-0" style={{ color: 'var(--text-3)' }}>
+                    {pct.toFixed(0)}%
+                  </span>
+                  <span className="text-[13px] tabular-nums font-medium shrink-0 w-24 text-right" style={{ color: 'var(--text-1)' }}>
+                    {fmt(entry.total)}
                   </span>
                 </div>
+              );
+            })}
+
+            {hasOthers && (
+              <div className="flex items-center gap-2.5">
+                <span className="text-[15px] shrink-0 leading-none" style={{ color: OTHERS_COLOR }}>●</span>
+                <span className="flex-1 text-[13px]" style={{ color: 'var(--text-3)' }}>
+                  + {others.length} altr{others.length === 1 ? 'a' : 'e'}
+                </span>
+                <span className="text-[11px] tabular-nums shrink-0" style={{ color: 'var(--text-3)' }}>
+                  {total > 0 ? ((othersTotal / total) * 100).toFixed(0) : 0}%
+                </span>
+                <span className="text-[13px] tabular-nums font-medium shrink-0 w-24 text-right" style={{ color: 'var(--text-2)' }}>
+                  {fmt(othersTotal)}
+                </span>
               </div>
-            );
-          })}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Barre orizzontali */}
-      <div className="mt-6">
-        <p className="text-[10px] font-semibold uppercase tracking-widest mb-4" style={{ color: 'var(--text-3)' }}>
+      {/* ── Confronto categorie ──────────────────────────────── */}
+      <div className="py-6">
+        <p className="text-sm font-semibold mb-5" style={{ color: 'var(--text-1)' }}>
           Confronto categorie
         </p>
-        <ResponsiveContainer width="100%" height={Math.max(180, pieData.length * 36)}>
+        <ResponsiveContainer width="100%" height={Math.max(160, barData.length * 38)}>
           <BarChart
             layout="vertical"
-            data={pieData}
-            margin={{ top: 0, right: 60, bottom: 0, left: 90 }}
+            data={barData}
+            margin={{ top: 0, right: 64, bottom: 0, left: 96 }}
           >
-            <CartesianGrid horizontal={false} stroke="var(--dark-600)" strokeDasharray="3 3" />
+            <CartesianGrid horizontal={false} stroke="var(--border)" strokeDasharray="3 3" />
             <XAxis
               type="number"
-              tickFormatter={v => `€${Number(v).toLocaleString('it-IT', { minimumFractionDigits: 0 })}`}
+              tickFormatter={v => `€${Number(v).toLocaleString('it-IT', { maximumFractionDigits: 0 })}`}
               tick={{ fontSize: 10, fill: 'var(--text-3)' }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               type="category"
-              dataKey="label"
-              tick={{ fontSize: 11, fill: 'var(--text-2)' }}
+              dataKey="name"
+              tick={{ fontSize: 12, fill: 'var(--text-2)' }}
               axisLine={false}
               tickLine={false}
-              width={86}
+              width={92}
             />
             <Tooltip
-              formatter={(value) => [fmt(Number(value)), 'Importo']}
-              contentStyle={{
-                background: 'var(--dark-800)',
-                border: '1px solid var(--dark-600)',
-                borderRadius: 8,
-                fontSize: 11,
-                color: 'var(--text-1)',
-              }}
+              formatter={(v) => [fmt(Number(v)), 'Importo']}
+              contentStyle={tooltipStyle}
+              itemStyle={{ color: 'var(--text-1)' }}
+              cursor={{ fill: 'rgba(255,255,255,0.04)' }}
             />
-            <Bar dataKey="total" radius={[0, 4, 4, 0]} maxBarSize={20}>
-              {pieData.map((entry, i) => (
-                <Cell key={i} fill={entry.fill} opacity={0.85} />
+            <Bar dataKey="total" radius={[0, 4, 4, 0]} maxBarSize={18}>
+              {barData.map((entry, i) => (
+                <Cell key={i} fill={entry.fill} />
               ))}
             </Bar>
           </BarChart>
